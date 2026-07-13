@@ -809,24 +809,33 @@ Never attempt to solve or bypass a CAPTCHA. Never write `verified` or
 
 ## Verifying this skill works
 
-Run it once against a single seeded car with a known plate, then confirm by
-re-running the same target list — a confidently-checked item drops out of
-it (since it's no longer `pending` and isn't stale yet):
+First check what's actually due — the seeded demo data ships with all 6
+automatable keys already marked `verified` (manual baseline), so a fresh
+checkout will show nothing pending until either 30 days pass on an
+agent-checked item or a real car gets added with `pending` items:
 
 ```bash
-npx tsx scripts/risk-checks/list-targets.ts --car car-01
-# Note which keys are pending, e.g. recall_status.
-# ... run the skill's procedure for that one car ...
-npx tsx scripts/risk-checks/list-targets.ts --car car-01
-# recall_status should no longer appear in the output (if it was
-# confidently resolved) — or should still appear with the same key if the
-# agent correctly left it pending (e.g. session expired, no match).
+npx tsx scripts/risk-checks/list-targets.ts
 ```
 
-For a closer look at exactly what got written, read
-`prisma/dev.db` with a SQLite browser, or temporarily add a one-off
-`console.log` to `scripts/risk-checks/write-result.ts`'s `main()` before
-running it once.
+If that's empty and you just want to confirm the mechanics work end to end
+(not a real crawl, just the plumbing), pick one seeded car and flip one of
+its automatable keys to `pending` directly via Prisma Studio (`npm run
+db:studio`, open the `RiskCheck` row for that car, edit its `items` JSON),
+then:
+
+```bash
+npx tsx scripts/risk-checks/list-targets.ts --car <carId>
+# The flipped key should now appear.
+# ... run the skill's procedure for that one car ...
+npx tsx scripts/risk-checks/list-targets.ts --car <carId>
+# It should no longer appear (if confidently resolved) — or should still
+# appear if the agent correctly left it pending (session expired, no match).
+```
+
+Re-run `npm run db:seed` afterward to wipe any test-only edits back to the
+clean demo state. For a closer look at exactly what got written, read
+`prisma/dev.db` with a SQLite browser (`npm run db:studio`).
 ```
 
 - [ ] **Step 2: Verify the skill is discoverable**
@@ -842,11 +851,13 @@ actually usable afterward.
 
 - [ ] **Step 4: Dry-run against one real car**
 
-Invoke the skill for a single car (e.g. `car-01`, which has a seeded plate
-`BRA2E19`) and follow the "Verifying this skill works" section. Confirm at
-least one risk-check item gets written with correct provenance, or — if a
-page/flow turns out to have moved — confirm the skill correctly stops and
-reports rather than guessing.
+Follow the "Verifying this skill works" section: run `list-targets.ts`
+first to find (or manually create, via Prisma Studio) a genuinely pending
+automatable item, invoke the skill for that one car (e.g. `car-01`, seeded
+plate `BRA2E19`), and confirm at least one risk-check item gets written
+with correct provenance — or, if a page/flow turns out to have moved,
+confirm the skill correctly stops and reports rather than guessing. Re-seed
+afterward (`npm run db:seed`) to restore clean demo data.
 
 - [ ] **Step 5: Commit**
 

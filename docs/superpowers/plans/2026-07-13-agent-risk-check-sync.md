@@ -154,7 +154,7 @@ export function createTestDb(): TestDbContext {
   const dbPath = join(dir, "test.db");
   const databaseUrl = `file:${dbPath}`;
 
-  execSync("npx prisma db push --skip-generate", {
+  execSync("npx prisma db push", {
     env: { ...process.env, DATABASE_URL: databaseUrl },
     stdio: "pipe",
   });

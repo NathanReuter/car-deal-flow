@@ -810,22 +810,23 @@ Never attempt to solve or bypass a CAPTCHA. Never write `verified` or
 ## Verifying this skill works
 
 Run it once against a single seeded car with a known plate, then confirm by
-hand:
+re-running the same target list — a confidently-checked item drops out of
+it (since it's no longer `pending` and isn't stale yet):
+
 ```bash
 npx tsx scripts/risk-checks/list-targets.ts --car car-01
+# Note which keys are pending, e.g. recall_status.
 # ... run the skill's procedure for that one car ...
-npx tsx -e "
-  const { PrismaClient } = require('./src/generated/prisma/client');
-  const { PrismaBetterSqlite3 } = require('@prisma/adapter-better-sqlite3');
-  const adapter = new PrismaBetterSqlite3({ url: 'file:./dev.db' });
-  const prisma = new PrismaClient({ adapter });
-  prisma.riskCheck.findUnique({ where: { carId: 'car-01' } }).then((r) => {
-    console.log(JSON.parse(r.items).find((i) => i.key === 'recall_status'));
-  });
-"
+npx tsx scripts/risk-checks/list-targets.ts --car car-01
+# recall_status should no longer appear in the output (if it was
+# confidently resolved) — or should still appear with the same key if the
+# agent correctly left it pending (e.g. session expired, no match).
 ```
-Confirm the printed item has `checkedBy: "agent"`, a recent `checkedAt`, and
-a status/notes that actually match what the browser showed.
+
+For a closer look at exactly what got written, read
+`prisma/dev.db` with a SQLite browser, or temporarily add a one-off
+`console.log` to `scripts/risk-checks/write-result.ts`'s `main()` before
+running it once.
 ```
 
 - [ ] **Step 2: Verify the skill is discoverable**

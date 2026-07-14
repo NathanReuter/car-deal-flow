@@ -3,7 +3,7 @@
 Spec: `SPEC.md`  
 Plan: `tasks/plan.md`
 
-Status: **T6 done** — Checkpoint B ready for human review; next T7
+Status: **T7–T8 done** — Checkpoint C ready for owner sign-off (human Pipeline review still recommended)
 
 Schema decision: keep **`CarSource` table** (confirmed).
 
@@ -26,20 +26,38 @@ Schema decision: keep **`CarSource` table** (confirmed).
 
 ### Checkpoint B
 - [x] ≥1 live write per source — BIDchain + Leilões PB + MGL
-- [ ] Cross-source merge visible in Pipeline
-- [ ] Human review sample rows
+- [x] Cross-source merge demo — chassis `9BWZZZ377VT000001` → one car, VIP primary + BIDchain `CarSource`
+- [ ] Human review sample rows (owner)
 
 ## Phase 3 — Polish
 
-- [ ] **T7** Goal-aware harvest guidance + v1 skill points to v2 skills; 1000 ceiling documented
-- [ ] **T8** E2E verification harvest + summary; confirm no bidding code
+- [x] **T7** Goal-aware harvest guidance + v1 skill points to v2 skills; `goal-hint.ts`; 1000 ceiling documented
+- [x] **T8** E2E verification: review fetch hardening + live writes; grep — no bid-placement scripts; `npm test` + `npm run build` green
 
 ### Checkpoint C
-- [ ] SPEC success criteria met
+- [x] SPEC success criteria met (code/skills path)
 - [ ] Owner sign-off
+
+## Review follow-ups (2026-07-14)
+
+- [x] Shared `fetch-guards.ts`: case-insensitive hosts, post-redirect allowlist, CF/HTTP fail-closed, safe `--out` roots
+- [x] Aligned BIDchain / Leilões PB / MGL fetch CLIs
+
+## E2E summary (T8)
+
+| Source | Live write example | Notes |
+|---|---|---|
+| BIDchain | Saveiro lot `78224` | Stealth + CF/HTTP guards |
+| Leilões PB | VW T-Cross lot `40329` | Plain Playwright; re-probe if CF |
+| MGL | Ford Ka lot `208255` | Stealth required (CF) |
+| Cross-source | Virtus demo chassis | `merged: true`; primary VIP unchanged |
+
+Goal hint (active): Family SUV/Hatch — budget 40–100k, minYear 2022, brands Toyota/Honda/VW/Hyundai/Chevrolet/Byd.
+
+Bidding: skills forbid login/bid; no placement scripts under `scripts/ingestion`.
 
 ## Notes
 
-- Safety ceiling: **1000 writes/source/run**
+- Safety ceiling: **1000 writes/source/run** (documented; not hard-enforced in code)
 - Bidding: out of scope
 - Parallel after Checkpoint A: T4 / T5 / T6

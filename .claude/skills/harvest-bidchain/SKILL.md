@@ -60,16 +60,21 @@ npx tsx scripts/ingestion/apply-goal-filter.ts --min-goal-fit 50
 
 6. Report: found / written / merged / skipped (with reasons) / parked / rejected.
 
-## Confidence rules
+## Goal-aware harvest
 
-Same as v1 harvest: never invent brand/model/year/price/bodyType. Partial
-plates are OK to store but write-lead only **merges** on full BR plates or
-chassis. Prefer goal-aware skip when listing year/price clearly miss the
-active buying goal (still log skips).
+```bash
+./node_modules/.bin/tsx scripts/ingestion/goal-hint.ts
+```
+
+When year/price/brand clearly miss the active goal, skip the write and log why.
+Never invent fields. Ceiling **1000 writes/source/run**. `--out` must stay under
+`/tmp` or `<cwd>/tmp` (enforced by the fetch script).
 
 ## Notes
 
-- Use `domcontentloaded` fetch (built into `bidchain-fetch.ts`).
-- Allowed hosts are enforced by the fetch script; add new white-labels only
-  after a public-access probe.
+- Use `domcontentloaded` fetch (built into `bidchain-fetch.ts`). Stealth is kept
+  for CF insurance (same stack as VIP/MGL); browse still requires no login.
+- Allowed hosts are enforced by the fetch script (final URL re-checked after
+  redirects); add new white-labels only after a public-access probe.
 - Cross-source dedup is handled by `write-lead` via chassis/plate + `CarSource`.
+- Fail closed: never invent brand/model/year/price/bodyType.

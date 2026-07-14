@@ -69,8 +69,12 @@ Tag `sellerType`: Caixa comitente → `caixa_recovery`; named bank →
 
 6. Report: found / written / merged / skipped (with reasons) / parked / rejected.
 
-## Confidence rules
+## Goal-aware harvest
 
-Never invent brand/model/year/price/bodyType. Prefer goal-aware skip when
-year/price clearly miss the active buying goal. Cross-source dedup is handled
-by `write-lead` via chassis/plate + `CarSource`.
+```bash
+./node_modules/.bin/tsx scripts/ingestion/goal-hint.ts
+```
+
+When year/price/brand clearly miss the active goal, skip the write and log why.
+Never invent fields. Ceiling **1000 writes/source/run**. `--out` must stay under
+`/tmp` or `<cwd>/tmp`.

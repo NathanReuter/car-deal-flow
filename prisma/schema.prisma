@@ -1,0 +1,116 @@
+// Car Deal Flow — persistence schema. SQLite for now; swap the datasource
+// provider/url when moving to a hosted Postgres instance later.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Car {
+  id             String   @id @default(cuid())
+  brand          String
+  model          String
+  trim           String
+  year           Int
+  modelYear      Int
+  mileageKm      Int? // null when auction/repo listing does not disclose odometer
+  askingPriceBRL Int
+  city           String
+  state          String
+  sellerType     String
+  fuel           String
+  transmission   String
+  bodyType       String
+  color          String
+  sourceUrl      String   @unique
+  sourcePlatform String
+  notes          String
+  plate          String?
+  chassis        String?
+  photos         String // JSON string array
+  pipelineStage  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Null until a confident FIPE sync — never store 0 as a fake valuation.
+  fipeValueBRL Int?
+
+  manualVerdictOverride String?
+  overrideReason        String?
+  // Why the car is in its current stage (goal-filter notes, etc.).
+  stageReason           String?
+
+  attachments     Attachment[]
+  sources         CarSource[]
+  riskCheck       RiskCheck?
+  conditionReview ConditionReview?
+}
+
+// Additional harvest origins for a car. Car.sourceUrl/sourcePlatform stay
+// first-wins primary; later houses append rows here (cross-source dedup).
+model CarSource {
+  id             String   @id @default(cuid())
+  carId          String
+  car            Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
+  sourceUrl      String   @unique
+  sourcePlatform String
+  editalUrl      String?
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime
+  @@index([carId])
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  carId     String
+  car       Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
+  label     String
+  kind      String
+  url       String
+  addedAt   DateTime @default(now())
+}
+
+model BuyingGoal {
+  id                      String  @id @default(cuid())
+  name                    String
+  active                  Boolean @default(true)
+  budgetMinBRL            Int
+  budgetMaxBRL            Int
+  minYear                 Int
+  maxMileageKm            Int
+  requiredFeatures        String // JSON string array
+  preferredBodyTypes      String // JSON string array
+  preferredBrands         String // JSON string array
+  excludedBrandsModels    String // JSON string array
+  fuelEconomyThresholdKmL Int
+  minResaleLiquidityScore Int
+  familySpaceRequired     Boolean
+}
+
+// One row per car. `items` holds the 13-point checklist as JSON — see
+// RiskCheckItem in src/lib/types.ts for the shape.
+model RiskCheck {
+  id    String @id @default(cuid())
+  carId String @unique
+  car   Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
+  items String // JSON: RiskCheckItem[]
+
+  caixaApplicable          Boolean
+  caixaEditalReviewed      Boolean
+  caixaHiddenTransferCosts Int
+  caixaResaleStigmaNote    String
+  caixaHistoryClarity      String
+  caixaLegalTransferRisk   String
+}
+
+model ConditionReview {
+  id            String @id @default(cuid())
+  carId         String @unique
+  car           Car    @relation(fields: [carId], references: [id], onDelete: Cascade)
+  fields        String // JSON: ConditionField[]
+  mechanicNotes String
+}

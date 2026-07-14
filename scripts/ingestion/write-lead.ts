@@ -1,0 +1,568 @@
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaClient } from "../../src/generated/prisma/client";
+import type {
+  BodyType,
+  ConditionField,
+  FuelType,
+  PipelineStage,
+  RiskCheckItem,
+  RiskCheckKey,
+  SellerType,
+  Transmission,
+} from "../../src/lib/types";
+import { normalizeChassis, normalizePlate } from "./identity";
+
+const RISK_KEYS: RiskCheckKey[] = [
+  "registration_consistency",
+  "chassis_consistency",
+  "financing_lien",
+  "judicial_restriction",
+  "theft_recovery_history",
+  "recall_status",
+  "auction_history",
+  "accident_flags",
+  "mileage_inconsistency",
+  "overdue_taxes_fines",
+  "ownership_count",
+  "service_records",
+  "manual_key_availability",
+];
+
+const CONDITION_FIELDS: { key: string; label: string }[] = [
+  { key: "paint_body", label: "Paint / body mismatch" },
+  { key: "tires", label: "Tires" },
+  { key: "suspension_brakes", label: "Suspension / brakes" },
+  { key: "engine", label: "Engine noise / leaks" },
+  { key: "transmission_behavior", label: "Transmission behavior" },
+  { key: "ac_electronics", label: "AC and electronics" },
+  { key: "multimedia", label: "Multimedia quality" },
+  { key: "interior_wear", label: "Seat / interior wear" },
+  { key: "trunk_family", label: "Trunk / family usability" },
+];
+
+const VALID_SELLER_TYPES: SellerType[] = [
+  "owner",
+  "dealer",
+  "auction",
+  "bank_recovery",
+  "caixa_recovery",
+];
+
+const VALID_BODY_TYPES: BodyType[] = [
+  "hatch",
+  "sedan",
+  "suv",
+  "pickup",
+  "minivan",
+  "coupe",
+  "wagon",
+];
+
+const PRICE_SEMANTICS_NOTE = "askingPriceBRL = minimum bid (lance mínimo).";
+
+/** Stages that may be reset to new_lead on re-harvest so the goal filter can re-run. */
+const RESETTABLE_STAGES = new Set<PipelineStage>(["new_lead", "parked"]);
+
+export interface WriteLeadInput {
+  brand: string;
+  model: string;
+  year: number;
+  askingPriceBRL: number;
+  sourceUrl: string;
+  sourcePlatform: string;
+  sellerType: SellerType;
+  bodyType: BodyType;
+  trim?: string;
+  modelYear?: number;
+  mileageKm?: number | null;
+  plate?: string;
+  chassis?: string;
+  photos?: string[];
+  city?: string;
+  state?: string;
+  fuel?: FuelType;
+  transmission?: Transmission;
+  color?: string;
+  notes?: string;
+  editalUrl?: string;
+}
+
+export class WriteLeadError extends Error {}
+
+export interface WriteLeadResult {
+  carId: string;
+  created: boolean;
+  updated: boolean;
+  merged: boolean;
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new WriteLeadError(`Missing required field: ${field}`);
+  }
+  return value.trim();
+}
+
+function requireNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new WriteLeadError(`Missing required field: ${field}`);
+  }
+  return value;
+}
+
+function buildRiskItems(mileageKm: number | null): RiskCheckItem[] {
+  return RISK_KEYS.map((key) => {
+    if (key === "mileage_inconsistency" && mileageKm === null) {
+      return {
+        key,
+        status: "warning" as const,
+        severity: "medium" as const,
+        notes: "Mileage not disclosed on the auction/repossession listing — absence is itself a risk signal.",
+      };
+    }
+    return {
+      key,
+      status: "pending" as const,
+      severity: "low" as const,
+      notes: "Not yet reviewed.",
+    };
+  });
+}
+
+function buildConditionFields(): ConditionField[] {
+  return CONDITION_FIELDS.map((f) => ({
+    key: f.key,
+    label: f.label,
+    rating: "not_inspected" as const,
+    notes: "Not yet inspected.",
+  }));
+}
+
+function mergeNotes(existing: string | undefined, extra: string[]): string {
+  const parts = [existing?.trim(), ...extra].filter((p): p is string => Boolean(p && p.length > 0));
+  const unique: string[] = [];
+  for (const p of parts) {
+    if (!unique.includes(p)) unique.push(p);
+  }
+  return unique.join(" ");
+}
+
+function appendMissingNotes(existingNotes: string, fragments: string[]): string {
+  let notes = existingNotes.trim();
+  for (const fragment of fragments) {
+    if (!notes.includes(fragment)) {
+      notes = notes.length > 0 ? `${notes} ${fragment}` : fragment;
+    }
+  }
+  return notes;
+}
+
+function requireHttpUrl(value: string, field: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new WriteLeadError(`Invalid ${field}: must be an absolute http(s) URL`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new WriteLeadError(`Invalid ${field}: only http(s) URLs are allowed`);
+  }
+  return value;
+}
+
+async function syncRiskCheckOnUpdate(
+  prisma: PrismaClient,
+  carId: string,
+  mileageKm: number | null,
+  sellerType: SellerType,
+): Promise<void> {
+  const riskCheck = await prisma.riskCheck.findUnique({ where: { carId } });
+  if (!riskCheck) return;
+
+  const items = JSON.parse(riskCheck.items) as RiskCheckItem[];
+  const index = items.findIndex((i) => i.key === "mileage_inconsistency");
+  if (index !== -1) {
+    if (mileageKm === null) {
+      items[index] = {
+        ...items[index],
+        status: "warning",
+        severity: "medium",
+        notes: "Mileage not disclosed on the auction/repossession listing — absence is itself a risk signal.",
+      };
+    } else if (items[index].status === "warning" && items[index].notes.includes("not disclosed")) {
+      // Clear the auto-warning once mileage appears; leave manually reviewed items alone.
+      items[index] = {
+        ...items[index],
+        status: "pending",
+        severity: "low",
+        notes: "Not yet reviewed.",
+        checkedBy: undefined,
+        checkedAt: undefined,
+      };
+    }
+  }
+
+  const caixaApplicable = sellerType === "caixa_recovery";
+  await prisma.riskCheck.update({
+    where: { carId },
+    data: {
+      items: JSON.stringify(items),
+      caixaApplicable,
+      ...(caixaApplicable && !riskCheck.caixaApplicable
+        ? { caixaHistoryClarity: "unclear" }
+        : {}),
+    },
+  });
+}
+
+export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Promise<WriteLeadResult> {
+  const brand = requireString(input.brand, "brand");
+  const model = requireString(input.model, "model");
+  const year = requireNumber(input.year, "year");
+  const askingPriceBRL = requireNumber(input.askingPriceBRL, "askingPriceBRL");
+  const sourceUrl = requireHttpUrl(requireString(input.sourceUrl, "sourceUrl"), "sourceUrl");
+  const sourcePlatform = requireString(input.sourcePlatform, "sourcePlatform");
+  const sellerType = input.sellerType;
+  const bodyType = input.bodyType;
+
+  if (!VALID_SELLER_TYPES.includes(sellerType)) {
+    throw new WriteLeadError(`Invalid sellerType: ${String(sellerType)}`);
+  }
+  if (!VALID_BODY_TYPES.includes(bodyType)) {
+    throw new WriteLeadError(`Invalid or missing bodyType: ${String(bodyType)}`);
+  }
+
+  if (input.editalUrl !== undefined && input.editalUrl.trim() !== "") {
+    requireHttpUrl(input.editalUrl.trim(), "editalUrl");
+  }
+
+  const mileageKm = input.mileageKm === undefined ? null : input.mileageKm;
+  if (mileageKm !== null && !Number.isFinite(mileageKm)) {
+    throw new WriteLeadError("Invalid mileageKm: must be a finite number or null");
+  }
+  if (mileageKm !== null && mileageKm < 0) {
+    throw new WriteLeadError("Invalid mileageKm: must be >= 0");
+  }
+
+  const trim = input.trim?.trim() ?? "";
+  const modelYear = input.modelYear ?? year;
+  const city = input.city?.trim() || "Unknown";
+  const state = input.state?.trim() || "??";
+  const fuel = input.fuel ?? "flex";
+  const transmission = input.transmission ?? "automatic";
+  const color = input.color?.trim() || "Unknown";
+  const photos = input.photos ?? [];
+
+  const inferenceNotes: string[] = [PRICE_SEMANTICS_NOTE];
+  if (!input.fuel) inferenceNotes.push("fuel defaulted to flex (not stated on listing).");
+  if (!input.transmission) inferenceNotes.push("transmission defaulted to automatic (not stated on listing).");
+  if (!input.city) inferenceNotes.push("city Unknown (not stated on listing).");
+  if (!input.state) inferenceNotes.push("state ?? (not stated on listing).");
+
+  const plate = normalizePlate(input.plate);
+  const chassis = normalizeChassis(input.chassis);
+
+  const listingFieldsBase = {
+    brand,
+    model,
+    trim,
+    year,
+    modelYear,
+    mileageKm,
+    askingPriceBRL,
+    city,
+    state,
+    sellerType,
+    fuel,
+    transmission,
+    bodyType,
+    color,
+    plate,
+    chassis,
+    photos: JSON.stringify(photos),
+  };
+
+  const editalUrl = input.editalUrl?.trim() || null;
+
+  const existingByUrl = await prisma.car.findUnique({ where: { sourceUrl } });
+
+  if (existingByUrl) {
+    const stage = existingByUrl.pipelineStage as PipelineStage;
+    const canResetStage = RESETTABLE_STAGES.has(stage);
+
+    const notes = appendMissingNotes(
+      mergeNotes(existingByUrl.notes, input.notes ? [input.notes.trim()] : []),
+      inferenceNotes,
+    );
+
+    await prisma.car.update({
+      where: { id: existingByUrl.id },
+      data: {
+        ...listingFieldsBase,
+        // Keep primary platform as first-wins; still refresh listing scalars.
+        sourcePlatform: existingByUrl.sourcePlatform,
+        notes,
+        ...(canResetStage ? { pipelineStage: "new_lead", stageReason: null } : {}),
+      },
+    });
+
+    await syncRiskCheckOnUpdate(prisma, existingByUrl.id, mileageKm, sellerType);
+    await upsertCarSource(prisma, {
+      carId: existingByUrl.id,
+      sourceUrl,
+      sourcePlatform,
+      editalUrl,
+    });
+
+    if (editalUrl) {
+      await upsertEditalAttachment(prisma, existingByUrl.id, editalUrl);
+    }
+
+    return { carId: existingByUrl.id, created: false, updated: true, merged: false };
+  }
+
+  const mergeTarget = await findMergeTarget(prisma, chassis, plate);
+
+  if (mergeTarget) {
+    const disagreementNotes: string[] = [];
+    const scalarPatch: Record<string, unknown> = {};
+
+    const mergeScalar = <K extends keyof typeof listingFieldsBase>(
+      key: K,
+      label: string,
+    ) => {
+      const incoming = listingFieldsBase[key];
+      const current = mergeTarget[key as keyof typeof mergeTarget];
+      if (incoming == null || incoming === "") return;
+      if (current == null || current === "") {
+        scalarPatch[key] = incoming;
+        return;
+      }
+      if (String(current) !== String(incoming)) {
+        disagreementNotes.push(
+          `Source ${sourcePlatform} disagrees on ${label}: kept ${String(current)}, saw ${String(incoming)}.`,
+        );
+      }
+    };
+
+    mergeScalar("mileageKm", "mileage");
+    mergeScalar("plate", "plate");
+    mergeScalar("chassis", "chassis");
+    mergeScalar("color", "color");
+    // Price / year / body often differ across houses — note only, keep first.
+    if (mergeTarget.askingPriceBRL !== askingPriceBRL) {
+      disagreementNotes.push(
+        `Source ${sourcePlatform} disagrees on price: kept ${mergeTarget.askingPriceBRL}, saw ${askingPriceBRL}.`,
+      );
+    }
+
+    const notes = appendMissingNotes(
+      mergeNotes(mergeTarget.notes, [
+        ...(input.notes ? [input.notes.trim()] : []),
+        ...disagreementNotes,
+      ]),
+      inferenceNotes,
+    );
+
+    await prisma.car.update({
+      where: { id: mergeTarget.id },
+      data: {
+        ...scalarPatch,
+        notes,
+        // Never change primary sourceUrl/sourcePlatform; never reset stage on merge.
+      },
+    });
+
+    await upsertCarSource(prisma, {
+      carId: mergeTarget.id,
+      sourceUrl,
+      sourcePlatform,
+      editalUrl,
+    });
+
+    if (editalUrl) {
+      await upsertEditalAttachment(prisma, mergeTarget.id, editalUrl);
+    }
+
+    return { carId: mergeTarget.id, created: false, updated: false, merged: true };
+  }
+
+  const notes = mergeNotes(input.notes, inferenceNotes);
+
+  const car = await prisma.car.create({
+    data: {
+      ...listingFieldsBase,
+      sourceUrl,
+      sourcePlatform,
+      notes,
+      pipelineStage: "new_lead",
+      stageReason: null,
+      fipeValueBRL: null,
+    },
+  });
+
+  const caixaApplicable = sellerType === "caixa_recovery";
+  await prisma.riskCheck.create({
+    data: {
+      carId: car.id,
+      items: JSON.stringify(buildRiskItems(mileageKm)),
+      caixaApplicable,
+      caixaEditalReviewed: false,
+      caixaHiddenTransferCosts: 0,
+      caixaResaleStigmaNote: "",
+      caixaHistoryClarity: caixaApplicable ? "unclear" : "clear",
+      caixaLegalTransferRisk: "",
+    },
+  });
+
+  await prisma.conditionReview.create({
+    data: {
+      carId: car.id,
+      fields: JSON.stringify(buildConditionFields()),
+      mechanicNotes: "No inspection performed yet.",
+    },
+  });
+
+  await upsertCarSource(prisma, {
+    carId: car.id,
+    sourceUrl,
+    sourcePlatform,
+    editalUrl,
+  });
+
+  if (editalUrl) {
+    await upsertEditalAttachment(prisma, car.id, editalUrl);
+  }
+
+  return { carId: car.id, created: true, updated: false, merged: false };
+}
+
+async function findMergeTarget(
+  prisma: PrismaClient,
+  chassis: string | null,
+  plate: string | null,
+) {
+  if (chassis) {
+    const byChassis = await prisma.car.findFirst({ where: { chassis } });
+    if (byChassis) return byChassis;
+  }
+  if (plate) {
+    const byPlate = await prisma.car.findFirst({ where: { plate } });
+    if (byPlate) return byPlate;
+  }
+  return null;
+}
+
+async function upsertCarSource(
+  prisma: PrismaClient,
+  args: {
+    carId: string;
+    sourceUrl: string;
+    sourcePlatform: string;
+    editalUrl: string | null;
+  },
+): Promise<void> {
+  const now = new Date();
+  await prisma.carSource.upsert({
+    where: { sourceUrl: args.sourceUrl },
+    create: {
+      carId: args.carId,
+      sourceUrl: args.sourceUrl,
+      sourcePlatform: args.sourcePlatform,
+      editalUrl: args.editalUrl,
+      lastSeenAt: now,
+    },
+    update: {
+      lastSeenAt: now,
+      ...(args.editalUrl ? { editalUrl: args.editalUrl } : {}),
+    },
+  });
+}
+
+async function upsertEditalAttachment(prisma: PrismaClient, carId: string, url: string): Promise<void> {
+  const existing = await prisma.attachment.findFirst({
+    where: { carId, url, kind: "document" },
+  });
+  if (existing) {
+    await prisma.attachment.update({
+      where: { id: existing.id },
+      data: { label: "Edital PDF" },
+    });
+    return;
+  }
+  await prisma.attachment.create({
+    data: {
+      carId,
+      label: "Edital PDF",
+      kind: "document",
+      url,
+    },
+  });
+}
+
+function parseArgs(argv: string[]): WriteLeadInput {
+  const get = (flag: string): string | undefined => {
+    const i = argv.indexOf(flag);
+    return i === -1 ? undefined : argv[i + 1];
+  };
+
+  const brand = get("--brand");
+  const model = get("--model");
+  const year = get("--year");
+  const price = get("--price");
+  const sourceUrl = get("--source-url");
+  const sourcePlatform = get("--source-platform");
+  const sellerType = get("--seller-type") as SellerType | undefined;
+  const bodyType = get("--body-type") as BodyType | undefined;
+
+  if (!brand || !model || !year || !price || !sourceUrl || !sourcePlatform || !sellerType || !bodyType) {
+    throw new WriteLeadError(
+      "Usage: write-lead.ts --brand <b> --model <m> --year <y> --price <n> --source-url <url> --source-platform <p> --seller-type <t> --body-type <bt> [--trim ...] [--mileage <n|null>] [--edital-url <url>]",
+    );
+  }
+
+  const mileageRaw = get("--mileage");
+  let mileageKm: number | null | undefined;
+  if (mileageRaw === undefined) mileageKm = undefined;
+  else if (mileageRaw === "null" || mileageRaw === "") mileageKm = null;
+  else mileageKm = Number(mileageRaw);
+
+  return {
+    brand,
+    model,
+    year: Number(year),
+    askingPriceBRL: Number(price),
+    sourceUrl,
+    sourcePlatform,
+    sellerType,
+    bodyType,
+    trim: get("--trim"),
+    mileageKm,
+    plate: get("--plate"),
+    chassis: get("--chassis"),
+    city: get("--city"),
+    state: get("--state"),
+    notes: get("--notes"),
+    editalUrl: get("--edital-url"),
+  };
+}
+
+async function main() {
+  const input = parseArgs(process.argv.slice(2));
+  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
+  const prisma = new PrismaClient({ adapter });
+  try {
+    const result = await writeLead(prisma, input);
+    console.log(JSON.stringify(result));
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  main().catch((e) => {
+    console.error(e instanceof Error ? e.message : e);
+    process.exitCode = 1;
+  });
+}

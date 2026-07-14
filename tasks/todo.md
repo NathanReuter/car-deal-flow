@@ -10,7 +10,7 @@ Schema decision: keep **`CarSource` table** (confirmed).
 ## Phase 1 — Dedup foundation
 
 - [x] **T1** `CarSource` schema + migration + backfill from existing `Car` primary source
-- [ ] **T2** `write-lead`: upsert `CarSource`; merge by chassis/plate (first-wins primary) + tests
+- [x] **T2** `write-lead`: upsert `CarSource`; merge by chassis/plate (first-wins primary) + tests
 - [ ] **T3** Car detail UI lists all source links
 
 ### Checkpoint A

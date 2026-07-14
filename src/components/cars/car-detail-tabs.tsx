@@ -68,7 +68,7 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
                     <a
                       href={s.url}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
                     >
                       {s.platform}

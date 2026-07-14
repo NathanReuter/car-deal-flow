@@ -10,7 +10,7 @@ import type {
   SellerType,
   Transmission,
 } from "../../src/lib/types";
-import { normalizeChassis, normalizePlate } from "./identity";
+import { normalizeChassis, normalizePlate, isMergeablePlate } from "./identity";
 
 const RISK_KEYS: RiskCheckKey[] = [
   "registration_consistency",
@@ -259,8 +259,10 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
   if (!input.city) inferenceNotes.push("city Unknown (not stated on listing).");
   if (!input.state) inferenceNotes.push("state ?? (not stated on listing).");
 
-  const plate = normalizePlate(input.plate);
-  const chassis = normalizeChassis(input.chassis);
+  const plateProvided = input.plate !== undefined;
+  const chassisProvided = input.chassis !== undefined;
+  const plate = plateProvided ? normalizePlate(input.plate) : undefined;
+  const chassis = chassisProvided ? normalizeChassis(input.chassis) : undefined;
 
   const listingFieldsBase = {
     brand,
@@ -277,8 +279,6 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     transmission,
     bodyType,
     color,
-    plate,
-    chassis,
     photos: JSON.stringify(photos),
   };
 
@@ -290,6 +290,11 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     const stage = existingByUrl.pipelineStage as PipelineStage;
     const canResetStage = RESETTABLE_STAGES.has(stage);
 
+    const nextPlate = plateProvided ? plate! : existingByUrl.plate;
+    const nextChassis = chassisProvided ? chassis! : existingByUrl.chassis;
+
+    await assertNoIdentityCollision(prisma, existingByUrl.id, nextChassis, nextPlate);
+
     const notes = appendMissingNotes(
       mergeNotes(existingByUrl.notes, input.notes ? [input.notes.trim()] : []),
       inferenceNotes,
@@ -299,6 +304,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       where: { id: existingByUrl.id },
       data: {
         ...listingFieldsBase,
+        plate: nextPlate,
+        chassis: nextChassis,
         // Keep primary platform as first-wins; still refresh listing scalars.
         sourcePlatform: existingByUrl.sourcePlatform,
         notes,
@@ -321,19 +328,23 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     return { carId: existingByUrl.id, created: false, updated: true, merged: false };
   }
 
-  const mergeTarget = await findMergeTarget(prisma, chassis, plate);
+  const mergeTarget = await findMergeTarget(
+    prisma,
+    chassisProvided ? chassis! : null,
+    plateProvided ? plate! : null,
+  );
 
   if (mergeTarget) {
     const disagreementNotes: string[] = [];
     const scalarPatch: Record<string, unknown> = {};
 
-    const mergeScalar = <K extends keyof typeof listingFieldsBase>(
-      key: K,
+    const mergeScalar = (
+      key: "mileageKm" | "plate" | "chassis" | "color",
       label: string,
+      incoming: string | number | null | undefined,
     ) => {
-      const incoming = listingFieldsBase[key];
-      const current = mergeTarget[key as keyof typeof mergeTarget];
       if (incoming == null || incoming === "") return;
+      const current = mergeTarget[key];
       if (current == null || current === "") {
         scalarPatch[key] = incoming;
         return;
@@ -345,10 +356,10 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       }
     };
 
-    mergeScalar("mileageKm", "mileage");
-    mergeScalar("plate", "plate");
-    mergeScalar("chassis", "chassis");
-    mergeScalar("color", "color");
+    mergeScalar("mileageKm", "mileage", mileageKm);
+    if (plateProvided) mergeScalar("plate", "plate", plate!);
+    if (chassisProvided) mergeScalar("chassis", "chassis", chassis!);
+    mergeScalar("color", "color", color);
     // Price / year / body often differ across houses — note only, keep first.
     if (mergeTarget.askingPriceBRL !== askingPriceBRL) {
       disagreementNotes.push(
@@ -394,6 +405,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       ...listingFieldsBase,
       sourceUrl,
       sourcePlatform,
+      plate: plateProvided ? plate! : null,
+      chassis: chassisProvided ? chassis! : null,
       notes,
       pipelineStage: "new_lead",
       stageReason: null,
@@ -437,6 +450,34 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
   return { carId: car.id, created: true, updated: false, merged: false };
 }
 
+async function assertNoIdentityCollision(
+  prisma: PrismaClient,
+  carId: string,
+  chassis: string | null,
+  plate: string | null,
+): Promise<void> {
+  if (chassis) {
+    const other = await prisma.car.findFirst({
+      where: { chassis, NOT: { id: carId } },
+    });
+    if (other) {
+      throw new WriteLeadError(
+        `chassis ${chassis} already belongs to car ${other.id}`,
+      );
+    }
+  }
+  if (isMergeablePlate(plate)) {
+    const other = await prisma.car.findFirst({
+      where: { plate, NOT: { id: carId } },
+    });
+    if (other) {
+      throw new WriteLeadError(
+        `plate ${plate} already belongs to car ${other.id}`,
+      );
+    }
+  }
+}
+
 async function findMergeTarget(
   prisma: PrismaClient,
   chassis: string | null,
@@ -446,7 +487,7 @@ async function findMergeTarget(
     const byChassis = await prisma.car.findFirst({ where: { chassis } });
     if (byChassis) return byChassis;
   }
-  if (plate) {
+  if (isMergeablePlate(plate)) {
     const byPlate = await prisma.car.findFirst({ where: { plate } });
     if (byPlate) return byPlate;
   }
@@ -474,6 +515,7 @@ async function upsertCarSource(
     },
     update: {
       lastSeenAt: now,
+      sourcePlatform: args.sourcePlatform,
       ...(args.editalUrl ? { editalUrl: args.editalUrl } : {}),
     },
   });

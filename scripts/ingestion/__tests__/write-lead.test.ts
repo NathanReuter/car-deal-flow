@@ -253,4 +253,80 @@ describe("writeLead", () => {
     expect(car!.pipelineStage).toBe("researching");
     expect(car!.stageReason).toBe("deep dive");
   });
+
+  it("preserves plate and chassis when omitted on same-URL re-harvest", async () => {
+    const first = await writeLead(ctx.prisma, {
+      ...baseInput,
+      plate: "ABC1D23",
+      chassis: "KEEPCHASSIS001",
+    });
+
+    await writeLead(ctx.prisma, {
+      ...baseInput,
+      askingPriceBRL: 93000,
+      // plate/chassis intentionally omitted
+    });
+
+    const car = await ctx.prisma.car.findUnique({ where: { id: first.carId } });
+    expect(car!.plate).toBe("ABC1D23");
+    expect(car!.chassis).toBe("KEEPCHASSIS001");
+    expect(car!.askingPriceBRL).toBe(93000);
+  });
+
+  it("does not plate-merge on weak/partial plates", async () => {
+    const first = await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourceUrl: "https://a.example/weak-1",
+      plate: "FINAL3",
+    });
+    const second = await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourceUrl: "https://b.example/weak-2",
+      sourcePlatform: "BIDchain",
+      plate: "final3",
+    });
+
+    expect(second.created).toBe(true);
+    expect(second.merged).toBe(false);
+    expect(second.carId).not.toBe(first.carId);
+  });
+
+  it("rejects same-URL update when chassis already belongs to another car", async () => {
+    await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourceUrl: "https://a.example/owner",
+      chassis: "SHAREDCHASSIS99",
+    });
+    await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourceUrl: "https://b.example/other",
+      sourcePlatform: "BIDchain",
+    });
+
+    await expect(
+      writeLead(ctx.prisma, {
+        ...baseInput,
+        sourceUrl: "https://b.example/other",
+        sourcePlatform: "BIDchain",
+        chassis: "SHAREDCHASSIS99",
+      }),
+    ).rejects.toThrow(/already belongs/);
+  });
+
+  it("updates CarSource platform on same-URL re-harvest", async () => {
+    await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourcePlatform: "Wrong Label",
+    });
+    await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourcePlatform: "Bradesco Vitrine",
+    });
+
+    const sources = await ctx.prisma.carSource.findMany({
+      where: { sourceUrl: baseInput.sourceUrl },
+    });
+    expect(sources).toHaveLength(1);
+    expect(sources[0]!.sourcePlatform).toBe("Bradesco Vitrine");
+  });
 });

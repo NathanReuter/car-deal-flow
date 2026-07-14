@@ -3,7 +3,7 @@
 Spec: `SPEC.md`  
 Plan: `tasks/plan.md`
 
-Status: **Checkpoint A reached** — T1–T3 done; await human review before T4 harvests
+Status: **T4 done** — implementing T5 Leilões PB
 
 Schema decision: keep **`CarSource` table** (confirmed).
 
@@ -20,7 +20,7 @@ Schema decision: keep **`CarSource` table** (confirmed).
 
 ## Phase 2 — Per-source harvests
 
-- [ ] **T4** BIDchain: public fetch script + `harvest-bidchain` skill (+ fixture/checklist)
+- [x] **T4** BIDchain: public fetch script + `harvest-bidchain` skill (+ fixture/checklist)
 - [ ] **T5** Leilões PB: probe → fetch + `harvest-leiloes-pb` skill
 - [ ] **T6** MGL: probe → fetch + `harvest-mgl` skill
 

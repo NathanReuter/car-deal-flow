@@ -2,11 +2,21 @@
 // does not interpret the page. No login (browse/detail are public; login is
 // only required to bid — verified 2026-07-14).
 //
-//   npx tsx scripts/ingestion/bidchain-fetch.ts <url> [--out <file>]
+//   ./node_modules/.bin/tsx scripts/ingestion/bidchain-fetch.ts <url> [--out <file>]
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
+import {
+  assertAllowedUrl,
+  assertFinalUrlAllowed,
+  assertHttpOk,
+  assertNotCloudflareBlock,
+  assertSafeOutPath,
+  isCliEntry,
+  parseUrlAndOptionalOut,
+} from "./fetch-guards";
 
 chromium.use(stealth());
 
@@ -23,61 +33,56 @@ export const BIDCHAIN_ALLOWED_HOSTS = new Set([
 ]);
 
 export function assertAllowedBidchainUrl(raw: string): URL {
-  let url: URL;
   try {
-    url = new URL(raw);
-  } catch {
-    throw new BidchainFetchError("Invalid URL");
+    return assertAllowedUrl(raw, BIDCHAIN_ALLOWED_HOSTS, "BIDchain");
+  } catch (e) {
+    throw new BidchainFetchError(e instanceof Error ? e.message : String(e));
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new BidchainFetchError("Only http(s) URLs are allowed");
-  }
-  if (!BIDCHAIN_ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
-    throw new BidchainFetchError(
-      `host not allowed for BIDchain fetch: ${url.hostname}`,
-    );
-  }
-  return url;
 }
 
-function parseArgs(argv: string[]): { url: string; out?: string } {
-  const url = argv[0];
-  if (!url || url.startsWith("--")) {
-    throw new BidchainFetchError(
-      "Usage: bidchain-fetch.ts <url> [--out <file>]",
-    );
-  }
-  const outIdx = argv.indexOf("--out");
-  const out = outIdx === -1 ? undefined : argv[outIdx + 1];
-  return { url, out };
-}
-
-async function main() {
-  const { url, out } = parseArgs(process.argv.slice(2));
-  assertAllowedBidchainUrl(url);
-
+export async function fetchBidchainHtml(url: string): Promise<string> {
+  const parsed = assertAllowedBidchainUrl(url);
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage();
-
   try {
+    const page = await browser.newPage();
     // networkidle often hangs on auction sites with long-polling; DOM is enough.
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+    const response = await page.goto(parsed.toString(), {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000,
+    });
     await page.waitForTimeout(1500);
-    const html = await page.content();
-
-    if (out) {
-      writeFileSync(out, html, "utf-8");
-      console.log(`Wrote ${html.length} bytes to ${out}`);
-    } else {
-      process.stdout.write(html);
+    try {
+      assertFinalUrlAllowed(page.url(), BIDCHAIN_ALLOWED_HOSTS, "BIDchain");
+      assertHttpOk(response, parsed.toString());
+    } catch (e) {
+      throw new BidchainFetchError(e instanceof Error ? e.message : String(e));
     }
+    const html = await page.content();
+    try {
+      assertNotCloudflareBlock(html, parsed.toString());
+    } catch (e) {
+      throw new BidchainFetchError(e instanceof Error ? e.message : String(e));
+    }
+    return html;
   } finally {
     await browser.close();
   }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+async function main() {
+  const { url, out } = parseUrlAndOptionalOut(process.argv.slice(2));
+  const html = await fetchBidchainHtml(url);
+  if (out) {
+    const safeOut = assertSafeOutPath(out);
+    mkdirSync(dirname(safeOut), { recursive: true });
+    writeFileSync(safeOut, html, "utf-8");
+    console.log(`Wrote ${html.length} bytes to ${safeOut}`);
+  } else {
+    process.stdout.write(html);
+  }
+}
+
+if (isCliEntry(import.meta.url, process.argv[1])) {
   main().catch((e) => {
     console.error(e instanceof Error ? e.message : e);
     process.exitCode = 1;

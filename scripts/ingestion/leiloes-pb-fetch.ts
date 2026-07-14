@@ -4,55 +4,34 @@
  * Browse/detail are public (no login). Login is for bidding only — never automate it.
  *
  * Usage:
- *   ./node_modules/.bin/tsx scripts/ingestion/leiloes-pb-fetch.ts "<url>" --out /tmp/lot.html
- *   ./node_modules/.bin/tsx scripts/ingestion/leiloes-pb-fetch.ts --url "<url>" --out /tmp/lot.html
+ *   ./node_modules/.bin/tsx scripts/ingestion/leiloes-pb-fetch.ts "<url>" [--out /tmp/lot.html]
  */
-import { chromium } from "playwright";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { chromium } from "playwright";
+import {
+  assertAllowedUrl,
+  assertFinalUrlAllowed,
+  assertHttpOk,
+  assertNotCloudflareBlock,
+  assertSafeOutPath,
+  isCliEntry,
+  parseUrlAndOptionalOut,
+} from "./fetch-guards";
 
-const ALLOWED_HOSTS = new Set(["leiloespb.com.br", "www.leiloespb.com.br"]);
+export class LeiloesPbFetchError extends Error {}
+
+export const LEILOES_PB_ALLOWED_HOSTS = new Set([
+  "leiloespb.com.br",
+  "www.leiloespb.com.br",
+]);
 
 export function assertLeiloesPbUrl(raw: string): URL {
-  let url: URL;
   try {
-    url = new URL(raw);
-  } catch {
-    throw new Error(`Invalid URL: ${raw}`);
+    return assertAllowedUrl(raw, LEILOES_PB_ALLOWED_HOSTS, "Leilões PB");
+  } catch (e) {
+    throw new LeiloesPbFetchError(e instanceof Error ? e.message : String(e));
   }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error(`Unsupported protocol: ${url.protocol}`);
-  }
-  if (!ALLOWED_HOSTS.has(url.hostname)) {
-    throw new Error(
-      `Host not allowed for Leilões PB fetch: ${url.hostname}. Allowed: ${[...ALLOWED_HOSTS].join(", ")}`
-    );
-  }
-  return url;
-}
-
-function parseArgs(argv: string[]): { url: string; out: string } {
-  let url = "";
-  let out = "";
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--url") {
-      url = argv[++i] ?? "";
-      continue;
-    }
-    if (a === "--out") {
-      out = argv[++i] ?? "";
-      continue;
-    }
-    if (!a.startsWith("-") && !url) {
-      url = a;
-      continue;
-    }
-    throw new Error(`Unknown argument: ${a}`);
-  }
-  if (!url) throw new Error("Missing URL (positional or --url)");
-  if (!out) throw new Error("Missing --out <path>");
-  return { url, out };
 }
 
 export async function fetchLeiloesPbHtml(url: string): Promise<string> {
@@ -64,45 +43,55 @@ export async function fetchLeiloesPbHtml(url: string): Promise<string> {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
-    if (!response) {
-      throw new Error(`No response for ${parsed}`);
+    try {
+      assertFinalUrlAllowed(page.url(), LEILOES_PB_ALLOWED_HOSTS, "Leilões PB");
+      assertHttpOk(response, parsed.toString());
+    } catch (e) {
+      throw new LeiloesPbFetchError(
+        e instanceof Error ? e.message : String(e),
+      );
     }
-    if (!response.ok()) {
-      throw new Error(`HTTP ${response.status()} for ${parsed}`);
+    const html = await page.content();
+    try {
+      assertNotCloudflareBlock(html, parsed.toString());
+    } catch (e) {
+      throw new LeiloesPbFetchError(
+        e instanceof Error ? e.message : String(e),
+      );
     }
-    return await page.content();
+    return html;
   } finally {
     await browser.close();
   }
 }
 
 async function main() {
-  const { url, out } = parseArgs(process.argv.slice(2));
-  assertLeiloesPbUrl(url);
+  const { url, out } = parseUrlAndOptionalOut(process.argv.slice(2));
   const html = await fetchLeiloesPbHtml(url);
-  mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(out, html, "utf8");
-  console.log(
-    JSON.stringify(
-      {
-        ok: true,
-        url,
-        out,
-        bytes: Buffer.byteLength(html, "utf8"),
-      },
-      null,
-      2
-    )
-  );
+  if (out) {
+    const safeOut = assertSafeOutPath(out);
+    mkdirSync(dirname(safeOut), { recursive: true });
+    writeFileSync(safeOut, html, "utf8");
+    console.log(
+      JSON.stringify(
+        {
+          ok: true,
+          url,
+          out: safeOut,
+          bytes: Buffer.byteLength(html, "utf8"),
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    process.stdout.write(html);
+  }
 }
 
-const isDirectRun =
-  process.argv[1]?.includes("leiloes-pb-fetch") ||
-  process.argv[1]?.endsWith("leiloes-pb-fetch.ts");
-
-if (isDirectRun) {
+if (isCliEntry(import.meta.url, process.argv[1])) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
-    process.exit(1);
+    process.exitCode = 1;
   });
 }

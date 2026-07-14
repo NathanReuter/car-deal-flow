@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { assertLeiloesPbUrl } from "../leiloes-pb-fetch";
+import {
+  assertLeiloesPbUrl,
+  LeiloesPbFetchError,
+} from "../leiloes-pb-fetch";
 
 describe("assertLeiloesPbUrl", () => {
-  it("allows leiloespb.com.br hosts", () => {
+  it("allows leiloespb.com.br hosts case-insensitively", () => {
     expect(() =>
       assertLeiloesPbUrl(
         "https://leiloespb.com.br/lote/40329/volkswagen-t-cross",
@@ -10,17 +13,20 @@ describe("assertLeiloesPbUrl", () => {
     ).not.toThrow();
     expect(() =>
       assertLeiloesPbUrl(
-        "https://www.leiloespb.com.br/eventos/leilao/2013/leilao-mapfre-seguros",
+        "https://WWW.LeiloesPB.com.br/eventos/leilao/2013/leilao-mapfre-seguros",
       ),
     ).not.toThrow();
   });
 
-  it("rejects non-http(s) and unknown hosts", () => {
+  it("rejects non-http(s), unknown hosts, and subdomain spoofs", () => {
     expect(() => assertLeiloesPbUrl("javascript:alert(1)")).toThrow(
-      /Invalid URL|Unsupported protocol/,
+      LeiloesPbFetchError,
     );
     expect(() =>
       assertLeiloesPbUrl("https://evil.example/lote/1"),
-    ).toThrow(/Host not allowed/);
+    ).toThrow(/host not allowed/);
+    expect(() =>
+      assertLeiloesPbUrl("https://evil.leiloespb.com.br/lote/1"),
+    ).toThrow(/host not allowed/);
   });
 });

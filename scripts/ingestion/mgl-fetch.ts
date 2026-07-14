@@ -5,9 +5,19 @@
 //
 //   ./node_modules/.bin/tsx scripts/ingestion/mgl-fetch.ts <url> [--out <file>]
 
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
+import {
+  assertAllowedUrl,
+  assertFinalUrlAllowed,
+  assertHttpOk,
+  assertNotCloudflareBlock,
+  assertSafeOutPath,
+  isCliEntry,
+  parseUrlAndOptionalOut,
+} from "./fetch-guards";
 
 chromium.use(stealth());
 
@@ -16,55 +26,35 @@ export class MglFetchError extends Error {}
 export const MGL_ALLOWED_HOSTS = new Set(["mgl.com.br", "www.mgl.com.br"]);
 
 export function assertAllowedMglUrl(raw: string): URL {
-  let url: URL;
   try {
-    url = new URL(raw);
-  } catch {
-    throw new MglFetchError("Invalid URL");
+    return assertAllowedUrl(raw, MGL_ALLOWED_HOSTS, "MGL");
+  } catch (e) {
+    throw new MglFetchError(e instanceof Error ? e.message : String(e));
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new MglFetchError("Only http(s) URLs are allowed");
-  }
-  if (!MGL_ALLOWED_HOSTS.has(url.hostname.toLowerCase())) {
-    throw new MglFetchError(
-      `host not allowed for MGL fetch: ${url.hostname}`,
-    );
-  }
-  return url;
-}
-
-function parseArgs(argv: string[]): { url: string; out?: string } {
-  const url = argv[0];
-  if (!url || url.startsWith("--")) {
-    throw new MglFetchError("Usage: mgl-fetch.ts <url> [--out <file>]");
-  }
-  const outIdx = argv.indexOf("--out");
-  const out = outIdx === -1 ? undefined : argv[outIdx + 1];
-  return { url, out };
 }
 
 export async function fetchMglHtml(url: string): Promise<string> {
-  assertAllowedMglUrl(url);
+  const parsed = assertAllowedMglUrl(url);
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    const response = await page.goto(url, {
+    const response = await page.goto(parsed.toString(), {
       waitUntil: "domcontentloaded",
       timeout: 60_000,
     });
     // Allow CF challenge / SPA paint; networkidle hangs on auction sites.
     await page.waitForTimeout(2500);
-    const html = await page.content();
-    if (
-      /Attention Required!\s*\|\s*Cloudflare/i.test(html) ||
-      /you have been blocked/i.test(html)
-    ) {
-      throw new MglFetchError(
-        `Cloudflare blocked automated fetch for ${url} (status ${response?.status() ?? "n/a"}). Open the lot in a normal browser and save HTML, or retry later.`,
-      );
+    try {
+      assertFinalUrlAllowed(page.url(), MGL_ALLOWED_HOSTS, "MGL");
+    } catch (e) {
+      throw new MglFetchError(e instanceof Error ? e.message : String(e));
     }
-    if (response && !response.ok() && response.status() !== 304) {
-      throw new MglFetchError(`HTTP ${response.status()} for ${url}`);
+    const html = await page.content();
+    try {
+      assertNotCloudflareBlock(html, parsed.toString());
+      assertHttpOk(response, parsed.toString());
+    } catch (e) {
+      throw new MglFetchError(e instanceof Error ? e.message : String(e));
     }
     return html;
   } finally {
@@ -73,20 +63,21 @@ export async function fetchMglHtml(url: string): Promise<string> {
 }
 
 async function main() {
-  const { url, out } = parseArgs(process.argv.slice(2));
+  const { url, out } = parseUrlAndOptionalOut(process.argv.slice(2));
   const html = await fetchMglHtml(url);
   if (out) {
-    writeFileSync(out, html, "utf-8");
-    console.log(`Wrote ${html.length} bytes to ${out}`);
+    const safeOut = assertSafeOutPath(out);
+    mkdirSync(dirname(safeOut), { recursive: true });
+    writeFileSync(safeOut, html, "utf-8");
+    console.log(`Wrote ${html.length} bytes to ${safeOut}`);
   } else {
     process.stdout.write(html);
   }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]}`;
-if (isMain) {
+if (isCliEntry(import.meta.url, process.argv[1])) {
   main().catch((err) => {
     console.error(err instanceof Error ? err.message : err);
-    process.exit(1);
+    process.exitCode = 1;
   });
 }

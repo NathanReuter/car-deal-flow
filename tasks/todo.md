@@ -15,7 +15,7 @@ Schema decision: keep **`CarSource` table** (confirmed).
 
 ### Checkpoint A
 - [x] `npm test` + `npm run build` green
-- [ ] CLI merge demo: one car, two `CarSource` rows
+- [x] CLI merge demo: one car, two `CarSource` rows
 - [ ] Human review before harvests
 
 ## Phase 2 — Per-source harvests

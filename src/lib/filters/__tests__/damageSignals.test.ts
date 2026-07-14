@@ -51,4 +51,23 @@ describe("detectDamageSignals", () => {
     expect(detectDamageSignals("").blocked).toBe(false);
     expect(detectDamageSignals(null).blocked).toBe(false);
   });
+
+  it("does not block negated colisão / histórico de sinistro", () => {
+    expect(detectDamageSignals("sem colisão registrada").blocked).toBe(false);
+    expect(detectDamageSignals("sem histórico de sinistro").blocked).toBe(false);
+    expect(detectDamageSignals("não há registro de sinistro no laudo").blocked).toBe(
+      false,
+    );
+  });
+
+  it("blocks Bradesco Sinistrado recovery type", () => {
+    expect(
+      detectDamageSignals("vehicle_type_of_recovery: Sinistrado").reasons,
+    ).toContain("sinistrado");
+    expect(detectDamageSignals("taxa de sinistralidade baixa").blocked).toBe(false);
+  });
+
+  it("does not treat bare 'monta' (leilão schedule) as damage", () => {
+    expect(detectDamageSignals("A monta do leilão começa amanhã").blocked).toBe(false);
+  });
 });

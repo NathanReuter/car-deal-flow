@@ -3,7 +3,7 @@
 Spec: `SPEC.md`  
 Plan: `tasks/plan.md`
 
-Status: **T4 done** — implementing T5 Leilões PB
+Status: **T5 done** — next T6 MGL
 
 Schema decision: keep **`CarSource` table** (confirmed).
 
@@ -21,11 +21,11 @@ Schema decision: keep **`CarSource` table** (confirmed).
 ## Phase 2 — Per-source harvests
 
 - [x] **T4** BIDchain: public fetch script + `harvest-bidchain` skill (+ fixture/checklist)
-- [ ] **T5** Leilões PB: probe → fetch + `harvest-leiloes-pb` skill
+- [x] **T5** Leilões PB: probe → fetch + `harvest-leiloes-pb` skill (live: VW T-Cross Mapfre lot 40329)
 - [ ] **T6** MGL: probe → fetch + `harvest-mgl` skill
 
 ### Checkpoint B
-- [ ] ≥1 live write per source (or documented blocker)
+- [ ] ≥1 live write per source (or documented blocker) — BIDchain + Leilões PB done; MGL pending
 - [ ] Cross-source merge visible in Pipeline
 - [ ] Human review sample rows
 

@@ -33,7 +33,12 @@ Before writing lots, print the active goal hint (optional but preferred):
 
 ```bash
 ./node_modules/.bin/tsx scripts/ingestion/goal-hint.ts
+./node_modules/.bin/tsx scripts/ingestion/check-damage.ts "<notes excerpt>"
 ```
+
+**Damage gate:** skip `write-lead` when the listing shows colisão, sinistro, any
+monta, sucata, or batido — only integral/conservado/sem sinistro. Always copy
+`Sinistro` / `Monta` into `--notes` when present.
 
 When listing year/price/brand clearly miss that goal, **skip and log** — do not
 invent fields to force a fit. Soft triage still runs via `apply-goal-filter`

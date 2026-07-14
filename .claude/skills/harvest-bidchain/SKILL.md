@@ -64,7 +64,13 @@ npx tsx scripts/ingestion/apply-goal-filter.ts --min-goal-fit 50
 
 ```bash
 ./node_modules/.bin/tsx scripts/ingestion/goal-hint.ts
+./node_modules/.bin/tsx scripts/ingestion/check-damage.ts "<notes excerpt>"
 ```
+
+**Damage gate (hard reject):** skip `write-lead` when the listing shows colisão,
+sinistro, any monta (pequena/média/grande), sucata, or batido. Only want
+integral / conservado / sem sinistro inventory. Always copy `Sinistro` / `Monta`
+lines into `--notes` when present so the filter can catch them.
 
 When year/price/brand clearly miss the active goal, skip the write and log why.
 Never invent fields. Ceiling **1000 writes/source/run**. `--out` must stay under

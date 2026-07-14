@@ -42,7 +42,9 @@ operator explicitly wants them (they will fail goal fit / risk).
 3. Read the HTML / embedded JSON. Prefer:
    - `valorMinimo` or `valorInicial` for `--price` (fail closed if unclear —
      ignore decorative `R$ 1,00` placeholders)
-   - `sucata: true` → skip (or note heavily)
+   - `sucata: true` → **skip** (do not write)
+   - `Sinistro` / `Monta` lines → copy into `--notes`; if `check-damage` blocks,
+     **skip** (colisão / monta / sucata not wanted)
    - `descricao` for brand/model/year
    - plate/chassis only when clearly present
 4. Write:
@@ -77,7 +79,11 @@ operator explicitly wants them (they will fail goal fit / risk).
 
 ```bash
 ./node_modules/.bin/tsx scripts/ingestion/goal-hint.ts
+./node_modules/.bin/tsx scripts/ingestion/check-damage.ts "<notes excerpt>"
 ```
+
+**Damage gate:** skip when colisão, sinistro, monta, sucata, batido. Copy
+`Sinistro` / `Monta` into `--notes`. Only integral/conservado/sem sinistro.
 
 When year/price/brand clearly miss the active goal, skip the write and log why.
 Never invent fields. Ceiling **1000 writes/source/run**. `--out` must stay under

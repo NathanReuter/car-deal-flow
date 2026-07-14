@@ -30,6 +30,6 @@ describe("loadGoalHint", () => {
     if (!hint.ok) return;
     expect(hint.prefer.budgetBRL).toEqual({ min: 40000, max: 100000 });
     expect(hint.prefer.preferredBrands).toContain("Toyota");
-    expect(hint.guidance.some((g) => g.includes("1000"))).toBe(true);
+    expect(hint.guidance.some((g) => g.includes("colisão"))).toBe(true);
   });
 });

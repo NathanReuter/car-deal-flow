@@ -37,6 +37,30 @@ describe("writeLead", () => {
     ).rejects.toThrow(/bodyType/);
   });
 
+  it("rejects leads with collision / monta in notes", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...baseInput,
+        sourceUrl: "https://example.com/damaged-1",
+        notes: "Sinistro: COLISÃO\nMonta: MEDIA MONTA",
+      }),
+    ).rejects.toThrow(/damage\/sinistro/i);
+  });
+
+  it("allows damaged notes with --force-damaged", async () => {
+    const result = await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourceUrl: "https://example.com/damaged-force",
+      notes: "Sinistro: COLISÃO\nMonta: MEDIA MONTA",
+      forceDamaged: true,
+    });
+    expect(result.created).toBe(true);
+    const risk = await ctx.prisma.riskCheck.findUnique({ where: { carId: result.carId } });
+    const items = JSON.parse(risk!.items) as RiskCheckItem[];
+    const accident = items.find((i) => i.key === "accident_flags")!;
+    expect(accident.status).toBe("failed");
+  });
+
   it("creates a lead with honest defaults and null FIPE/mileage", async () => {
     const result = await writeLead(ctx.prisma, {
       ...baseInput,

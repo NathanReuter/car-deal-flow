@@ -60,4 +60,5 @@ Bidding: skills forbid login/bid; no placement scripts under `scripts/ingestion`
 
 - Safety ceiling: **1000 writes/source/run** (documented; not hard-enforced in code)
 - Bidding: out of scope
+- **Damage gate:** colisão / sinistro / monta / sucata / batido → hard reject; only integral/conservado
 - Parallel after Checkpoint A: T4 / T5 / T6

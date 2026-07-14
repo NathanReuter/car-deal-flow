@@ -36,6 +36,9 @@ export async function loadGoalHint(prisma: PrismaClient) {
       excludedBrandsModels: parseJsonArray(goal.excludedBrandsModels),
     },
     guidance: [
+      "Reject at harvest (skip write-lead) when notes show: colisão, sinistro, any monta (pequena/média/grande), sucata, batido. Prefer integral/conservado/sem sinistro only.",
+      "Preflight: ./node_modules/.bin/tsx scripts/ingestion/check-damage.ts \"<notes>\"",
+      "Always copy Sinistro / Monta / conservado|integral lines from the listing into --notes.",
       "When listing year/price/brand clearly miss this goal, skip the write and log why (goal-aware).",
       "Never invent brand/model/year/price/bodyType to force a fit.",
       "Safety ceiling: 1000 writes per source per run.",

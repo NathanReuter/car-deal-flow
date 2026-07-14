@@ -33,8 +33,9 @@ normal browser — do not invent fields.
 3. Extract only confident fields. Prefer:
    - **Price:** label `valor mínimo` / abertura amount (fail closed if unclear —
      ignore despesas, percent discounts, and unrelated R$ lines)
-   - Skip or note heavily when status is `Finalizado` / `Vendido` if the operator
-     only wants open lots
+   - Skip when status is `Finalizado` / `Vendido` if the operator only wants open lots
+   - **Damage:** copy `Sinistro` / `Monta` / sucata into `--notes`; run
+     `check-damage` — skip colisão / monta / sucata / batido lots
    - Brand/model/year from `MARCA/MODELO` + `ANO` / `ANO/MODELO`
    - Mileage when labeled `KM:`
    - Plate/chassis only when clearly present (many lots say “No chassi”)
@@ -73,7 +74,11 @@ Tag `sellerType`: Caixa comitente → `caixa_recovery`; named bank →
 
 ```bash
 ./node_modules/.bin/tsx scripts/ingestion/goal-hint.ts
+./node_modules/.bin/tsx scripts/ingestion/check-damage.ts "<notes excerpt>"
 ```
+
+**Damage gate:** skip colisão / sinistro / monta / sucata / batido. Copy sinistro
+lines into `--notes`. Only integral/conservado/sem sinistro.
 
 When year/price/brand clearly miss the active goal, skip the write and log why.
 Never invent fields. Ceiling **1000 writes/source/run**. `--out` must stay under

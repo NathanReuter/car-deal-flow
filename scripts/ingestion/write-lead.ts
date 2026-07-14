@@ -11,6 +11,10 @@ import type {
   Transmission,
 } from "../../src/lib/types";
 import { normalizeChassis, normalizePlate, isMergeablePlate } from "./identity";
+import {
+  detectDamageSignals,
+  type DamageSignalResult,
+} from "../../src/lib/filters/damageSignals";
 
 const RISK_KEYS: RiskCheckKey[] = [
   "registration_consistency",
@@ -85,6 +89,8 @@ export interface WriteLeadInput {
   color?: string;
   notes?: string;
   editalUrl?: string;
+  /** Bypass damage/sinistro gate (owner override only). */
+  forceDamaged?: boolean;
 }
 
 export class WriteLeadError extends Error {}
@@ -110,8 +116,19 @@ function requireNumber(value: unknown, field: string): number {
   return value;
 }
 
-function buildRiskItems(mileageKm: number | null): RiskCheckItem[] {
+function buildRiskItems(
+  mileageKm: number | null,
+  damage?: DamageSignalResult,
+): RiskCheckItem[] {
   return RISK_KEYS.map((key) => {
+    if (key === "accident_flags" && damage?.blocked) {
+      return {
+        key,
+        status: "failed" as const,
+        severity: "high" as const,
+        notes: `Listing damage flags: ${damage.reasons.join("; ")}`,
+      };
+    }
     if (key === "mileage_inconsistency" && mileageKm === null) {
       return {
         key,
@@ -127,6 +144,15 @@ function buildRiskItems(mileageKm: number | null): RiskCheckItem[] {
       notes: "Not yet reviewed.",
     };
   });
+}
+
+function assertAllowedNotes(notes: string, forceDamaged?: boolean): void {
+  const damage = detectDamageSignals(notes);
+  if (damage.blocked && !forceDamaged) {
+    throw new WriteLeadError(
+      `Listing shows damage/sinistro (${damage.reasons.join(", ")}). Only integral/conservado inventory is wanted. Pass --force-damaged to override.`,
+    );
+  }
 }
 
 function buildConditionFields(): ConditionField[] {
@@ -300,6 +326,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       inferenceNotes,
     );
 
+    assertAllowedNotes(notes, input.forceDamaged);
+
     await prisma.car.update({
       where: { id: existingByUrl.id },
       data: {
@@ -375,6 +403,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       inferenceNotes,
     );
 
+    assertAllowedNotes(notes, input.forceDamaged);
+
     await prisma.car.update({
       where: { id: mergeTarget.id },
       data: {
@@ -399,6 +429,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
   }
 
   const notes = mergeNotes(input.notes, inferenceNotes);
+  assertAllowedNotes(notes, input.forceDamaged);
+  const damage = detectDamageSignals(notes);
 
   const car = await prisma.car.create({
     data: {
@@ -418,7 +450,7 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
   await prisma.riskCheck.create({
     data: {
       carId: car.id,
-      items: JSON.stringify(buildRiskItems(mileageKm)),
+      items: JSON.stringify(buildRiskItems(mileageKm, damage)),
       caixaApplicable,
       caixaEditalReviewed: false,
       caixaHiddenTransferCosts: 0,
@@ -586,6 +618,7 @@ function parseArgs(argv: string[]): WriteLeadInput {
     state: get("--state"),
     notes: get("--notes"),
     editalUrl: get("--edital-url"),
+    forceDamaged: argv.includes("--force-damaged"),
   };
 }
 

@@ -3,7 +3,7 @@
 Spec: `SPEC.md`  
 Plan: `tasks/plan.md`
 
-Status: **T1 done** — implementing Phase 1
+Status: **Checkpoint A reached** — T1–T3 done; await human review before T4 harvests
 
 Schema decision: keep **`CarSource` table** (confirmed).
 
@@ -11,10 +11,10 @@ Schema decision: keep **`CarSource` table** (confirmed).
 
 - [x] **T1** `CarSource` schema + migration + backfill from existing `Car` primary source
 - [x] **T2** `write-lead`: upsert `CarSource`; merge by chassis/plate (first-wins primary) + tests
-- [ ] **T3** Car detail UI lists all source links
+- [x] **T3** Car detail UI lists all source links
 
 ### Checkpoint A
-- [ ] `npm test` + `npm run build` green
+- [x] `npm test` + `npm run build` green
 - [ ] CLI merge demo: one car, two `CarSource` rows
 - [ ] Human review before harvests
 

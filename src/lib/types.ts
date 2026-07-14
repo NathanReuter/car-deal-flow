@@ -8,6 +8,7 @@ export type PipelineStage =
   | "inspected"
   | "negotiating"
   | "approved"
+  | "parked"
   | "rejected"
   | "bought";
 
@@ -18,8 +19,19 @@ export const PIPELINE_STAGES: { id: PipelineStage; label: string }[] = [
   { id: "inspected", label: "Inspected" },
   { id: "negotiating", label: "Negotiating" },
   { id: "approved", label: "Approved" },
+  { id: "parked", label: "Parked" },
   { id: "rejected", label: "Rejected" },
   { id: "bought", label: "Bought" },
+];
+
+/** Stages treated as the active working set (shortlist / default priority). */
+export const ACTIVE_PIPELINE_STAGES: PipelineStage[] = [
+  "new_lead",
+  "researching",
+  "waiting_docs",
+  "inspected",
+  "negotiating",
+  "approved",
 ];
 
 export type SellerType =
@@ -63,7 +75,7 @@ export interface Car {
   trim: string;
   year: number;
   modelYear: number;
-  mileageKm: number;
+  mileageKm: number | null;
   askingPriceBRL: number;
   city: string;
   state: string; // UF, e.g. "SP"
@@ -74,6 +86,8 @@ export interface Car {
   color: string;
   sourceUrl: string;
   sourcePlatform: string;
+  /** All harvest origins; primary is first (matches sourceUrl). Optional for scoring-only paths. */
+  sources?: { url: string; platform: string; isPrimary: boolean }[];
   notes: string;
   plate?: string;
   chassis?: string;
@@ -84,9 +98,10 @@ export interface Car {
   updatedAt: string;
   manualVerdictOverride?: Verdict;
   overrideReason?: string;
+  stageReason?: string;
 
-  // External valuation data (placeholder until a FIPE API is wired in).
-  fipeValueBRL: number;
+  // Null until a confident FIPE sync — never treat 0 as a real valuation.
+  fipeValueBRL: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -203,16 +218,16 @@ export interface ConditionReview {
 // ---------------------------------------------------------------------------
 // Market & valuation
 
-export type MarketVerdict = "under_market" | "fair" | "overpriced";
+export type MarketVerdict = "under_market" | "fair" | "overpriced" | "unavailable";
 export type ResaleTimeBucket = "fast" | "moderate" | "slow";
 
 export interface MarketAssessment {
   carId: string;
   askingPriceBRL: number;
-  fipeValueBRL: number;
-  fairMarketMinBRL: number;
-  fairMarketMaxBRL: number;
-  premiumOverFairPct: number; // negative = discount
+  fipeValueBRL: number | null;
+  fairMarketMinBRL: number | null;
+  fairMarketMaxBRL: number | null;
+  premiumOverFairPct: number | null; // negative = discount; null when FIPE unknown
   resaleEase: "high" | "medium" | "low";
   resaleTimeBucket: ResaleTimeBucket;
   verdict: MarketVerdict;
@@ -255,7 +270,7 @@ export interface DecisionResult {
   goalFitScore: number;
   documentationRiskScore: number;
   conditionScore: number;
-  valueScore: number;
+  valueScore: number | null; // null when FIPE not synced (excluded from weighted blend)
   resaleLiquidityScore: number;
   finalScore: number;
   verdict: Verdict;

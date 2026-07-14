@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckStatusBadge } from "@/components/domain/check-status-badge";
-import { formatBRL, formatDate, formatKm, formatPct } from "@/lib/format";
+import { formatBRL, formatDate, formatFipe, formatKm, formatPct } from "@/lib/format";
 import { RISK_CHECK_LABEL } from "@/lib/types";
 import type { CarBundle } from "@/lib/aggregate";
 import { syncFipeValue, type FipeSyncResult } from "@/lib/actions/fipe-sync";
@@ -60,14 +60,27 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
             <Field label="Color" value={car.color} />
             <Field label="Plate" value={car.plate ?? "—"} />
             <Field label="Chassis" value={car.chassis ?? "—"} />
-            <Field
-              label="Source"
-              value={
-                <a href={car.sourceUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
-                  {car.sourcePlatform} <ExternalLink className="h-3 w-3" />
-                </a>
-              }
-            />
+            <div className="sm:col-span-2 lg:col-span-3">
+              <span className="text-xs font-medium text-text-muted">Sources</span>
+              <ul className="mt-1 flex flex-col gap-1">
+                {(car.sources ?? [{ url: car.sourceUrl, platform: car.sourcePlatform, isPrimary: true }]).map((s) => (
+                  <li key={s.url}>
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
+                    >
+                      {s.platform}
+                      {s.isPrimary ? (
+                        <span className="text-xs text-text-muted">(primary)</span>
+                      ) : null}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
             <div className="sm:col-span-2 lg:col-span-3">
               <span className="text-xs font-medium text-text-muted">Notes</span>
               <p className="mt-1 text-sm text-text-secondary">{car.notes}</p>
@@ -194,9 +207,23 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
           </CardHeader>
           <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Asking price" value={formatBRL(market.askingPriceBRL)} />
-            <Field label="FIPE value" value={formatBRL(market.fipeValueBRL)} />
-            <Field label="Fair market range" value={`${formatBRL(market.fairMarketMinBRL)} – ${formatBRL(market.fairMarketMaxBRL)}`} />
-            <Field label="Premium vs fair value" value={formatPct(market.premiumOverFairPct, { signed: true })} />
+            <Field label="FIPE value" value={formatFipe(market.fipeValueBRL)} />
+            <Field
+              label="Fair market range"
+              value={
+                market.fairMarketMinBRL !== null && market.fairMarketMaxBRL !== null
+                  ? `${formatBRL(market.fairMarketMinBRL)} – ${formatBRL(market.fairMarketMaxBRL)}`
+                  : "FIPE not synced"
+              }
+            />
+            <Field
+              label="Premium vs fair value"
+              value={
+                market.premiumOverFairPct !== null
+                  ? formatPct(market.premiumOverFairPct, { signed: true })
+                  : "—"
+              }
+            />
             <Field label="Resale ease" value={market.resaleEase} />
             <Field label="Resale time" value={market.resaleTimeBucket} />
             <Field label="Market verdict" value={market.verdict.replaceAll("_", " ")} />

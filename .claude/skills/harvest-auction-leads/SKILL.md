@@ -79,6 +79,7 @@ browsing VIP Leilões directly:
 | Edital PDF vs page disagree | Prefer PDF; note discrepancy in `--notes` |
 | FIPE unknown | Leave null (write-lead never stores 0) |
 | Same `sourceUrl` again | Update via write-lead (does not clobber researching+) |
+| Auction date not stated or ambiguous on page/edital | Leave `--auction-date` off — write-lead stores `null`. Never guess a date. |
 
 ## Bradesco Vitrine (deterministic — preferred)
 
@@ -93,6 +94,8 @@ Run the full catalog pipeline without reading HTML:
 Read `/tmp/bradesco-harvest/write-summary.json` and report kept/skipped/written counts.
 Use `--dry-run` on `bradesco-harvest.ts` to tally without DB writes. List step filters
 non-car categories, sinistrado recovery, and damaged descriptions before fetch.
+If the catalog exposes an auction end date per lot, pass it through to
+`write-lead` as `--auction-date`; leave it off when not confidently present.
 
 ## Procedure (legacy per-lot — VIP only; avoid for Bradesco)
 
@@ -102,7 +105,10 @@ non-car categories, sinistrado recovery, and damaged descriptions before fetch.
    each lot's detail page. If an edital PDF is linked, fetch and read it for
    chassis/plate/min bid when page text is thin. If PDF text is unreadable,
    continue with page fields only.
-3. For each confident lot, write:
+3. Extract the auction date/time (when the lot closes or goes to leilão) from
+   the page or edital PDF. If it's not clearly stated or is ambiguous
+   (e.g. only a relative "encerra em breve"), leave it off — never guess.
+4. For each confident lot, write:
 
 ```bash
 npx tsx scripts/ingestion/write-lead.ts \
@@ -121,6 +127,7 @@ npx tsx scripts/ingestion/write-lead.ts \
   [--plate "<plate>"] \
   [--chassis "<chassis>"] \
   [--edital-url "<pdfUrl>"] \
+  [--auction-date "<ISO-8601 date/time>"] \
   [--notes "<extra notes>"]
 ```
 
@@ -128,14 +135,21 @@ Use `--source-platform "VIP Leilões"` for VIP lots. Use
 `--seller-type caixa_recovery` only when Caixa is explicitly attributed;
 `--seller-type bank_recovery` for a named bank; otherwise `auction`.
 
-4. After both sources:
+5. After both sources:
 
 ```bash
 npx tsx scripts/ingestion/apply-goal-filter.ts [--min-goal-fit 50]
+npx tsx scripts/ingestion/expire-stale-leads.ts
 ```
 
-5. Report a summary: lots found per source, written, skipped (with reasons),
-   kept `new_lead`, moved to `parked`, hard-`rejected` (exclusions only).
+`expire-stale-leads.ts` soft-deletes any `new_lead`/`parked` car whose known
+auction date(s) have all passed, moving it to the `expired` stage (hidden
+from the default cars/kanban views, still queryable). It never guesses —
+a car with any unknown auction date is left alone.
+
+6. Report a summary: lots found per source, written, skipped (with reasons),
+   kept `new_lead`, moved to `parked`, hard-`rejected` (exclusions only), and
+   `expired` count from the sweep.
 
 ## Notes
 

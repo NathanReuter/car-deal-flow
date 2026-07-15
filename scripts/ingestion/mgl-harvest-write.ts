@@ -1,6 +1,8 @@
 /**
  * Parse MGL lot HTML dumps and write leads (damage-only gate).
  * Does not call the network — reads /tmp/mgl-harvest/lots/*.html
+ *
+ * @deprecated Prefer `mgl-harvest.ts` for full corp-repasse pipeline.
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

@@ -218,5 +218,12 @@ export function extractFinanceiraEventIds(html: string): string[] {
     const id = m[1];
     if (/\d{6}bs/i.test(id)) ids.add(id);
   }
+
+  // Financeiras label near event link (broader than bs* slug pattern alone)
+  const labeled = /Financeiras?[\s\S]{0,300}?\/evento\/detalhes\/([a-z0-9]+)/gi;
+  while ((m = labeled.exec(html)) !== null) {
+    ids.add(m[1]);
+  }
+
   return [...ids];
 }

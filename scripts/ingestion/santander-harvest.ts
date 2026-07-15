@@ -1,8 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { chromium } from "playwright-extra";
+import stealth from "puppeteer-extra-plugin-stealth";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
-import { fetchSantanderHtml } from "./santander-fetch";
+import { fetchSantanderHtmlWithPage } from "./santander-fetch";
 import type { SantanderListResult } from "./santander-list";
 import { parseSantanderLot, santanderToWriteLead } from "./santander-parse";
 import {
@@ -12,9 +14,12 @@ import {
   hasReachedCeiling,
   recordWriteResult,
   spawnWriteLead,
+  throttleFetch,
   writeSummary,
   type HarvestSummary,
 } from "./lib/harvest-runner";
+
+chromium.use(stealth());
 
 export async function harvestSantanderLots(options: {
   lotsPath: string;
@@ -31,54 +36,62 @@ export async function harvestSantanderLots(options: {
   const lots = options.limit ? payload.lots.slice(0, options.limit) : payload.lots;
   const fetchDir = options.fetchDir ?? "/tmp/santander-harvest/lots";
   const ceiling = options.ceiling ?? DEFAULT_CEILING;
+  const skipExisting = options.skipExisting ?? true;
 
   if (options.fetchDir) mkdirSync(fetchDir, { recursive: true });
 
-  for (const lot of lots) {
-    summary.scanned++;
-    const htmlPath = join(fetchDir, `${lot.id}.html`);
-    let html: string;
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    for (const lot of lots) {
+      summary.scanned++;
+      const htmlPath = join(fetchDir, `${lot.id}.html`);
+      let html: string;
 
-    if (options.skipExisting !== false && existsSync(htmlPath)) {
-      html = readFileSync(htmlPath, "utf8");
-    } else {
-      try {
-        html = await fetchSantanderHtml(lot.url);
-        if (options.fetchDir) writeFileSync(htmlPath, html, "utf8");
-      } catch (error) {
-        bumpSkip(summary, "fetch_error");
-        summary.errors.push({
-          url: lot.url,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      if (skipExisting && existsSync(htmlPath)) {
+        html = readFileSync(htmlPath, "utf8");
+      } else {
+        try {
+          html = await fetchSantanderHtmlWithPage(page, lot.url);
+          if (options.fetchDir) writeFileSync(htmlPath, html, "utf8");
+          await throttleFetch();
+        } catch (error) {
+          bumpSkip(summary, "fetch_error");
+          summary.errors.push({
+            url: lot.url,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          continue;
+        }
+      }
+
+      const parsed = parseSantanderLot(lot.id, lot.url, html);
+      const input = santanderToWriteLead(parsed);
+      if (!input) {
+        bumpSkip(summary, parsed.skipReason ?? "skipped");
         continue;
       }
-    }
 
-    const parsed = parseSantanderLot(lot.id, lot.url, html);
-    const input = santanderToWriteLead(parsed);
-    if (!input) {
-      bumpSkip(summary, parsed.skipReason ?? "skipped");
-      continue;
-    }
+      if (hasReachedCeiling(summary, ceiling)) {
+        bumpSkip(summary, "ceiling");
+        continue;
+      }
 
-    if (hasReachedCeiling(summary, ceiling)) {
-      bumpSkip(summary, "ceiling");
-      continue;
-    }
+      if (options.dryRun) {
+        recordWriteResult(summary, { created: true });
+        continue;
+      }
 
-    if (options.dryRun) {
-      recordWriteResult(summary, { created: true });
-      continue;
+      const writeResult = spawnWriteLead(input);
+      if (!writeResult.ok) {
+        bumpSkip(summary, "write_error");
+        summary.errors.push({ url: input.sourceUrl, error: writeResult.error ?? "" });
+        continue;
+      }
+      recordWriteResult(summary, writeResult.result ?? { created: true });
     }
-
-    const writeResult = spawnWriteLead(input);
-    if (!writeResult.ok) {
-      bumpSkip(summary, "write_error");
-      summary.errors.push({ url: input.sourceUrl, error: writeResult.error ?? "" });
-      continue;
-    }
-    recordWriteResult(summary, writeResult.result ?? { created: true });
+  } finally {
+    await browser.close();
   }
 
   if (options.summaryOut) writeSummary(options.summaryOut, summary);

@@ -12,6 +12,7 @@ import {
 import {
   assertAllowedBidchainUrl,
   BIDCHAIN_ALLOWED_HOSTS,
+  isAllowedBidchainHost,
 } from "./bidchain-fetch";
 import { detectDamageSignals } from "../../src/lib/filters/damageSignals";
 
@@ -37,6 +38,43 @@ export function extractBidchainLotId(url: string): string | null {
   return m?.[1] ?? null;
 }
 
+export function normalizeBidchainLotUrl(raw: string, baseUrl: string): string | null {
+  try {
+    const url = raw.startsWith("http") ? raw : new URL(raw, baseUrl).toString();
+    if (!/\/lote\/\d+/i.test(url)) return null;
+    assertAllowedBidchainUrl(url);
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+export function extractBidchainPaginationUrls(html: string, baseUrl: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (href: string) => {
+    try {
+      const url = new URL(href, baseUrl).toString();
+      assertAllowedBidchainUrl(url);
+      if (seen.has(url)) return;
+      seen.add(url);
+      out.push(url);
+    } catch {
+      // skip non-allowlisted or invalid hrefs
+    }
+  };
+
+  for (const match of html.matchAll(/href=["']([^"']*(?:[?&]page=\d+|\/page\/\d+)[^"']*)["']/gi)) {
+    add(match[1] ?? "");
+  }
+  for (const match of html.matchAll(
+    /href=["']([^"']+)["'][^>]*>\s*(?:Next|Próximo|Próxima|›|»|&gt;)/gi,
+  )) {
+    add(match[1] ?? "");
+  }
+  return out;
+}
+
 export function extractBidchainLotsFromHtml(
   html: string,
   baseUrl: string,
@@ -50,9 +88,8 @@ export function extractBidchainLotsFromHtml(
     const id = match[2];
     if (!id || seen.has(id)) continue;
 
-    const url = path.startsWith("http")
-      ? path
-      : `${base.origin}${path.startsWith("/") ? path : `/${path}`}`;
+    const url = normalizeBidchainLotUrl(path, baseUrl);
+    if (!url) continue;
     seen.add(id);
 
     const anchorRe = new RegExp(
@@ -73,7 +110,7 @@ export function extractBidchainLotsFromHtml(
     });
   }
 
-  return lots;
+  return lots.filter((lot) => isAllowedBidchainHost(lot.host));
 }
 
 export function filterBidchainListLot(
@@ -119,53 +156,37 @@ export async function listBidchainLots(options: {
     const page = await browser.newPage();
     for (const seed of seeds) {
       const parsed = assertAllowedBidchainUrl(seed);
-      const response = await page.goto(parsed.toString(), {
-        waitUntil: "domcontentloaded",
-        timeout: 60_000,
-      });
-      await page.waitForTimeout(1500);
-      assertFinalUrlAllowed(page.url(), BIDCHAIN_ALLOWED_HOSTS, "BIDchain");
-      assertHttpOk(response, parsed.toString());
-      const html = await page.content();
-      assertNotCloudflareBlock(html, parsed.toString());
+      const visited = new Set<string>();
+      const queue = [parsed.toString()];
 
-      for (const lot of extractBidchainLotsFromHtml(html, page.url())) {
-        const filter = filterBidchainListLot(lot);
-        if (!filter.keep) {
-          bumpSkip(skipped, filter.reason ?? "skipped");
-          continue;
-        }
-        byId.set(lot.id, lot);
-      }
+      while (queue.length > 0 && visited.size < maxPages) {
+        const pageUrl = queue.shift()!;
+        if (visited.has(pageUrl)) continue;
+        visited.add(pageUrl);
 
-      for (let p = 2; p <= maxPages; p++) {
-        const nextUrl = `${parsed.origin}${parsed.pathname}?page=${p}`;
-        try {
-          const next = assertAllowedBidchainUrl(nextUrl);
-          const nextResp = await page.goto(next.toString(), {
-            waitUntil: "domcontentloaded",
-            timeout: 60_000,
-          });
-          await page.waitForTimeout(1200);
-          const nextHtml = await page.content();
-          assertHttpOk(nextResp, next.toString());
-          const batch = extractBidchainLotsFromHtml(nextHtml, page.url());
-          if (batch.length === 0) break;
-          let added = 0;
-          for (const lot of batch) {
-            const filter = filterBidchainListLot(lot);
-            if (!filter.keep) {
-              bumpSkip(skipped, filter.reason ?? "skipped");
-              continue;
-            }
-            if (!byId.has(lot.id)) {
-              byId.set(lot.id, lot);
-              added++;
-            }
+        const response = await page.goto(pageUrl, {
+          waitUntil: "domcontentloaded",
+          timeout: 60_000,
+        });
+        await page.waitForTimeout(1500);
+        assertFinalUrlAllowed(page.url(), BIDCHAIN_ALLOWED_HOSTS, "BIDchain");
+        assertHttpOk(response, pageUrl);
+        const html = await page.content();
+        assertNotCloudflareBlock(html, pageUrl);
+
+        for (const lot of extractBidchainLotsFromHtml(html, page.url())) {
+          const filter = filterBidchainListLot(lot);
+          if (!filter.keep) {
+            bumpSkip(skipped, filter.reason ?? "skipped");
+            continue;
           }
-          if (added === 0) break;
-        } catch {
-          break;
+          byId.set(lot.id, lot);
+        }
+
+        for (const nextUrl of extractBidchainPaginationUrls(html, page.url())) {
+          if (!visited.has(nextUrl) && !queue.includes(nextUrl)) {
+            queue.push(nextUrl);
+          }
         }
       }
     }

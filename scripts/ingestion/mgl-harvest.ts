@@ -4,10 +4,7 @@ import { spawnSync } from "node:child_process";
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
-import {
-  assertAllowedMglUrl,
-  MGL_ALLOWED_HOSTS,
-} from "./mgl-fetch";
+import { fetchMglHtmlWithPage } from "./mgl-fetch";
 import { listMglAuctionLots } from "./mgl-list-lots";
 import type { MglAuctionListResult } from "./mgl-list-auctions";
 import { parseMglLead, type MglListLotRow } from "./mgl-parse";
@@ -19,14 +16,10 @@ import {
   hasReachedCeiling,
   recordWriteResult,
   spawnWriteLead,
+  throttleFetch,
   writeSummary,
   type HarvestSummary,
 } from "./lib/harvest-runner";
-import {
-  assertFinalUrlAllowed,
-  assertHttpOk,
-  assertNotCloudflareBlock,
-} from "./fetch-guards";
 
 chromium.use(stealth());
 
@@ -49,55 +42,52 @@ export async function harvestMglLots(options: {
   const summary = createHarvestSummary("MGL");
   const ceiling = options.ceiling ?? DEFAULT_CEILING;
   const fetchDir = options.fetchDir ?? "/tmp/mgl-harvest/lots";
+  const skipExisting = options.skipExisting ?? true;
   mkdirSync(fetchDir, { recursive: true });
 
   const payload = JSON.parse(readFileSync(options.auctionsPath, "utf8")) as MglAuctionListResult;
   const allLots: MglListLotRow[] = [];
 
-  for (const auction of payload.auctions) {
-    const listed = await listMglAuctionLots(auction.url);
-    for (const lot of listed.lots) {
-      allLots.push({
-        id: lot.id,
-        url: lot.url,
-        statusLote: lot.statusLote,
-        statusLeilao: lot.statusLeilao,
-        statusLabel: lot.statusLabel,
-        valorMinimo: lot.valorMinimo,
-        valorVendaDireta: lot.valorVendaDireta,
-        valorAvaliacao: lot.valorAvaliacao,
-        isVendaDireta: lot.isVendaDireta,
-        categoria: lot.categoria,
-        auctionId: listed.auctionId,
-        titulo: lot.titulo,
-      });
-    }
-  }
-
-  const lots = options.limit ? allLots.slice(0, options.limit) : allLots;
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
+
+    for (const auction of payload.auctions) {
+      if (options.limit && allLots.length >= options.limit) break;
+      const listed = await listMglAuctionLots(auction.url, { page });
+      for (const lot of listed.lots) {
+        allLots.push({
+          id: lot.id,
+          url: lot.url,
+          statusLote: lot.statusLote,
+          statusLeilao: lot.statusLeilao,
+          statusLabel: lot.statusLabel,
+          valorMinimo: lot.valorMinimo,
+          valorVendaDireta: lot.valorVendaDireta,
+          valorAvaliacao: lot.valorAvaliacao,
+          isVendaDireta: lot.isVendaDireta,
+          categoria: lot.categoria,
+          auctionId: listed.auctionId,
+          titulo: lot.titulo,
+        });
+        if (options.limit && allLots.length >= options.limit) break;
+      }
+    }
+
+    const lots = options.limit ? allLots.slice(0, options.limit) : allLots;
+
     for (const lot of lots) {
       summary.scanned++;
       const htmlPath = join(fetchDir, `${lot.id}.html`);
       let html: string;
 
-      if (options.skipExisting !== false && existsSync(htmlPath)) {
+      if (skipExisting && existsSync(htmlPath)) {
         html = readFileSync(htmlPath, "utf8");
       } else {
         try {
-          const parsed = assertAllowedMglUrl(lot.url);
-          const response = await page.goto(parsed.toString(), {
-            waitUntil: "domcontentloaded",
-            timeout: 60_000,
-          });
-          await page.waitForTimeout(2000);
-          assertFinalUrlAllowed(page.url(), MGL_ALLOWED_HOSTS, "MGL");
-          html = await page.content();
-          assertNotCloudflareBlock(html, parsed.toString());
-          assertHttpOk(response, parsed.toString());
+          html = await fetchMglHtmlWithPage(page, lot.url);
           writeFileSync(htmlPath, html, "utf8");
+          await throttleFetch();
         } catch (error) {
           bumpSkip(summary, "fetch_error");
           summary.errors.push({

@@ -1,14 +1,12 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { chromium } from "playwright-extra";
+import stealth from "puppeteer-extra-plugin-stealth";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
-import { fetchBidchainHtml } from "./bidchain-fetch";
-import {
-  bidchainToWriteLead,
-  parseBidchainLot,
-  type BidchainParsed,
-} from "./bidchain-parse";
-import type { BidchainListLot, BidchainListResult } from "./bidchain-list";
+import { fetchBidchainHtmlWithPage } from "./bidchain-fetch";
+import { bidchainToWriteLead, parseBidchainLot } from "./bidchain-parse";
+import type { BidchainListResult } from "./bidchain-list";
 import {
   bumpSkip,
   createHarvestSummary,
@@ -16,9 +14,12 @@ import {
   hasReachedCeiling,
   recordWriteResult,
   spawnWriteLead,
+  throttleFetch,
   writeSummary,
   type HarvestSummary,
 } from "./lib/harvest-runner";
+
+chromium.use(stealth());
 
 export async function harvestBidchainLots(options: {
   lotsPath: string;
@@ -36,66 +37,74 @@ export async function harvestBidchainLots(options: {
   const lots = options.limit ? payload.lots.slice(0, options.limit) : payload.lots;
   const fetchDir = options.fetchDir ?? "/tmp/bid-harvest/lots";
   const ceiling = options.ceiling ?? DEFAULT_CEILING;
+  const skipExisting = options.skipExisting ?? true;
 
   if (options.fetchDir) {
     mkdirSync(fetchDir, { recursive: true });
   }
 
-  for (const lot of lots) {
-    summary.scanned++;
-    hosts[lot.host] = (hosts[lot.host] ?? 0) + 1;
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    for (const lot of lots) {
+      summary.scanned++;
+      hosts[lot.host] = (hosts[lot.host] ?? 0) + 1;
 
-    const htmlPath = join(fetchDir, `${lot.id}.html`);
-    let html: string;
-    if (options.skipExisting && existsSync(htmlPath)) {
-      html = readFileSync(htmlPath, "utf8");
-    } else {
-      try {
-        html = await fetchBidchainHtml(lot.url);
-        if (options.fetchDir) {
-          writeFileSync(htmlPath, html, "utf8");
+      const htmlPath = join(fetchDir, `${lot.id}.html`);
+      let html: string;
+      if (skipExisting && existsSync(htmlPath)) {
+        html = readFileSync(htmlPath, "utf8");
+      } else {
+        try {
+          html = await fetchBidchainHtmlWithPage(page, lot.url);
+          if (options.fetchDir) {
+            writeFileSync(htmlPath, html, "utf8");
+          }
+          await throttleFetch();
+        } catch (error) {
+          bumpSkip(summary, "fetch_error");
+          summary.errors.push({
+            url: lot.url,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          continue;
         }
-      } catch (error) {
-        bumpSkip(summary, "fetch_error");
-        summary.errors.push({
-          url: lot.url,
-          error: error instanceof Error ? error.message : String(error),
-        });
+      }
+
+      const parsed = parseBidchainLot(lot.id, lot.url, html);
+      const input = bidchainToWriteLead(parsed);
+      if (!input) {
+        bumpSkip(summary, parsed.skipReason ?? "skipped");
         continue;
       }
-    }
 
-    const parsed = parseBidchainLot(lot.id, lot.url, html);
-    const input = bidchainToWriteLead(parsed);
-    if (!input) {
-      bumpSkip(summary, parsed.skipReason ?? "skipped");
-      continue;
-    }
-
-    if (hasReachedCeiling(summary, ceiling)) {
-      bumpSkip(summary, "ceiling");
-      continue;
-    }
-
-    if (options.dryRun) {
-      recordWriteResult(summary, { created: true });
-      continue;
-    }
-
-    const writeResult = spawnWriteLead(input);
-    if (!writeResult.ok) {
-      bumpSkip(
-        summary,
-        /damage|sinistro|monta|sucata|batido/i.test(writeResult.error ?? "")
-          ? "damage_write_lead"
-          : "write_error",
-      );
-      if (!/damage|sinistro|monta|sucata|batido/i.test(writeResult.error ?? "")) {
-        summary.errors.push({ url: input.sourceUrl, error: writeResult.error ?? "" });
+      if (hasReachedCeiling(summary, ceiling)) {
+        bumpSkip(summary, "ceiling");
+        continue;
       }
-      continue;
+
+      if (options.dryRun) {
+        recordWriteResult(summary, { created: true });
+        continue;
+      }
+
+      const writeResult = spawnWriteLead(input);
+      if (!writeResult.ok) {
+        bumpSkip(
+          summary,
+          /damage|sinistro|monta|sucata|batido/i.test(writeResult.error ?? "")
+            ? "damage_write_lead"
+            : "write_error",
+        );
+        if (!/damage|sinistro|monta|sucata|batido/i.test(writeResult.error ?? "")) {
+          summary.errors.push({ url: input.sourceUrl, error: writeResult.error ?? "" });
+        }
+        continue;
+      }
+      recordWriteResult(summary, writeResult.result ?? { created: true });
     }
-    recordWriteResult(summary, writeResult.result ?? { created: true });
+  } finally {
+    await browser.close();
   }
 
   const result = { ...summary, hosts };

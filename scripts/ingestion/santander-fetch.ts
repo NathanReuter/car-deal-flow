@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { chromium } from "playwright-extra";
+import type { Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
 import {
   assertFinalUrlAllowed,
@@ -19,21 +20,25 @@ chromium.use(stealth());
 
 export class SantanderFetchError extends Error {}
 
-export async function fetchSantanderHtml(url: string): Promise<string> {
+export async function fetchSantanderHtmlWithPage(page: Page, url: string): Promise<string> {
   const parsed = assertAllowedSantanderUrl(url);
+  const response = await page.goto(parsed.toString(), {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await page.waitForTimeout(2500);
+  assertFinalUrlAllowed(page.url(), SANTANDER_ALLOWED_HOSTS, "Santander Retomados");
+  const html = await page.content();
+  assertNotCloudflareBlock(html, parsed.toString());
+  assertHttpOk(response, parsed.toString());
+  return html;
+}
+
+export async function fetchSantanderHtml(url: string): Promise<string> {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    const response = await page.goto(parsed.toString(), {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
-    await page.waitForTimeout(2500);
-    assertFinalUrlAllowed(page.url(), SANTANDER_ALLOWED_HOSTS, "Santander Retomados");
-    const html = await page.content();
-    assertNotCloudflareBlock(html, parsed.toString());
-    assertHttpOk(response, parsed.toString());
-    return html;
+    return await fetchSantanderHtmlWithPage(page, url);
   } catch (e) {
     throw new SantanderFetchError(e instanceof Error ? e.message : String(e));
   } finally {

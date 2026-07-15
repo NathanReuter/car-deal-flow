@@ -8,6 +8,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { chromium } from "playwright-extra";
+import type { Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
 import {
   assertAllowedUrl,
@@ -33,30 +34,33 @@ export function assertAllowedMglUrl(raw: string): URL {
   }
 }
 
-export async function fetchMglHtml(url: string): Promise<string> {
+export async function fetchMglHtmlWithPage(page: Page, url: string): Promise<string> {
   const parsed = assertAllowedMglUrl(url);
+  const response = await page.goto(parsed.toString(), {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await page.waitForTimeout(2500);
+  try {
+    assertFinalUrlAllowed(page.url(), MGL_ALLOWED_HOSTS, "MGL");
+  } catch (e) {
+    throw new MglFetchError(e instanceof Error ? e.message : String(e));
+  }
+  const html = await page.content();
+  try {
+    assertNotCloudflareBlock(html, parsed.toString());
+    assertHttpOk(response, parsed.toString());
+  } catch (e) {
+    throw new MglFetchError(e instanceof Error ? e.message : String(e));
+  }
+  return html;
+}
+
+export async function fetchMglHtml(url: string): Promise<string> {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    const response = await page.goto(parsed.toString(), {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
-    // Allow CF challenge / SPA paint; networkidle hangs on auction sites.
-    await page.waitForTimeout(2500);
-    try {
-      assertFinalUrlAllowed(page.url(), MGL_ALLOWED_HOSTS, "MGL");
-    } catch (e) {
-      throw new MglFetchError(e instanceof Error ? e.message : String(e));
-    }
-    const html = await page.content();
-    try {
-      assertNotCloudflareBlock(html, parsed.toString());
-      assertHttpOk(response, parsed.toString());
-    } catch (e) {
-      throw new MglFetchError(e instanceof Error ? e.message : String(e));
-    }
-    return html;
+    return await fetchMglHtmlWithPage(page, url);
   } finally {
     await browser.close();
   }

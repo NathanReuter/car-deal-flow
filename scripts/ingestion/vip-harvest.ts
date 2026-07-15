@@ -27,6 +27,10 @@ export async function harvestVipLots(options: {
   const payload = JSON.parse(readFileSync(options.detailsPath, "utf8")) as VipDetailsFile;
   const details = options.limit ? payload.details.slice(0, options.limit) : payload.details;
 
+  for (const err of payload.errors ?? []) {
+    summary.errors.push({ url: err.url, error: err.error });
+  }
+
   for (const detail of details) {
     summary.scanned++;
     const parsed = parseVipLead(detail, { excludeInsurer: options.excludeInsurer });

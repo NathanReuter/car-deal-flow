@@ -4,6 +4,7 @@ import { chromium } from "playwright-extra";
 import type { Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
+import { throttleFetch } from "./lib/harvest-runner";
 import { extractVipDetailFromHtml, type VipDetail } from "./vip-parse";
 import { requireVipSessionPath, type VipListLot } from "./vip-list-financeiras";
 
@@ -72,6 +73,7 @@ export async function fetchVipDetailsBatch(options: {
         const detail = extractVipDetailFromHtml(html, lot.url, lot.event);
         out.push(detail);
         existingUrls.add(lot.url);
+        await throttleFetch();
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         errors.push({ url: lot.url, event: lot.event, error: msg });

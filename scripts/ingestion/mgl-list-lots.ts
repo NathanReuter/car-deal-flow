@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { chromium } from "playwright-extra";
+import type { Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
 import {
   assertFinalUrlAllowed,
@@ -48,61 +49,48 @@ type LotsPage = {
   Index?: number;
 };
 
-export async function listMglAuctionLots(auctionUrl: string): Promise<{
-  auctionId: number;
-  lots: Array<{
-    id: number;
-    url: string;
-    titulo: string;
-    categoria: string;
-    statusLote: string;
-    statusLeilao: string;
-    statusLabel: string;
-    valorMinimo: number | null;
-    valorVendaDireta: number | null;
-    valorAvaliacao: number | null;
-    isVendaDireta: boolean;
-  }>;
-}> {
+export type MglListedLot = {
+  id: number;
+  url: string;
+  titulo: string;
+  categoria: string;
+  statusLote: string;
+  statusLeilao: string;
+  statusLabel: string;
+  valorMinimo: number | null;
+  valorVendaDireta: number | null;
+  valorAvaliacao: number | null;
+  isVendaDireta: boolean;
+};
+
+export async function listMglAuctionLotsOnPage(
+  page: Page,
+  auctionUrl: string,
+): Promise<{ auctionId: number; lots: MglListedLot[] }> {
   const parsed = assertAllowedMglUrl(auctionUrl);
-  const browser = await chromium.launch({ headless: true });
+  const response = await page.goto(parsed.toString(), {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await page.waitForTimeout(2500);
   try {
-    const page = await browser.newPage();
-    const response = await page.goto(parsed.toString(), {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
-    await page.waitForTimeout(2500);
-    try {
-      assertFinalUrlAllowed(page.url(), MGL_ALLOWED_HOSTS, "MGL");
-      assertNotCloudflareBlock(await page.content(), parsed.toString());
-      assertHttpOk(response, parsed.toString());
-    } catch (e) {
-      throw new MglFetchError(e instanceof Error ? e.message : String(e));
-    }
+    assertFinalUrlAllowed(page.url(), MGL_ALLOWED_HOSTS, "MGL");
+    assertNotCloudflareBlock(await page.content(), parsed.toString());
+    assertHttpOk(response, parsed.toString());
+  } catch (e) {
+    throw new MglFetchError(e instanceof Error ? e.message : String(e));
+  }
 
-    const auctionId = await page.evaluate(() => {
-      const el = document.getElementById("ID_Leilao") as HTMLInputElement | null;
-      return parseInt(el?.value ?? "0", 10);
-    });
-    if (!auctionId) {
-      throw new MglFetchError(`No ID_Leilao on ${parsed.toString()}`);
-    }
+  const auctionId = await page.evaluate(() => {
+    const el = document.getElementById("ID_Leilao") as HTMLInputElement | null;
+    return parseInt(el?.value ?? "0", 10);
+  });
+  if (!auctionId) {
+    throw new MglFetchError(`No ID_Leilao on ${parsed.toString()}`);
+  }
 
-    const lots: Array<{
-      id: number;
-      url: string;
-      titulo: string;
-      categoria: string;
-      statusLote: string;
-      statusLeilao: string;
-      statusLabel: string;
-      valorMinimo: number | null;
-      valorVendaDireta: number | null;
-      valorAvaliacao: number | null;
-      isVendaDireta: boolean;
-    }> = [];
-    const seen = new Set<number>();
+  const lots: MglListedLot[] = [];
+  const seen = new Set<number>();
 
     const pickMinBid = (row: LotRow): number | null => {
       const rt = row.GetLoteRealTime?.[0];
@@ -227,6 +215,19 @@ export async function listMglAuctionLots(auctionUrl: string): Promise<{
     }
 
     return { auctionId, lots };
+}
+
+export async function listMglAuctionLots(
+  auctionUrl: string,
+  options?: { page?: Page },
+): Promise<{ auctionId: number; lots: MglListedLot[] }> {
+  if (options?.page) {
+    return listMglAuctionLotsOnPage(options.page, auctionUrl);
+  }
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    return await listMglAuctionLotsOnPage(page, auctionUrl);
   } finally {
     await browser.close();
   }

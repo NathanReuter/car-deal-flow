@@ -7,6 +7,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { chromium } from "playwright-extra";
+import type { Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
 import {
   assertAllowedUrl,
@@ -15,6 +16,7 @@ import {
   assertNotCloudflareBlock,
   assertSafeOutPath,
   isCliEntry,
+  normalizeHostname,
   parseUrlAndOptionalOut,
 } from "./fetch-guards";
 
@@ -32,6 +34,10 @@ export const BIDCHAIN_ALLOWED_HOSTS = new Set([
   "www.canaldeleiloes.net",
 ]);
 
+export function isAllowedBidchainHost(hostname: string): boolean {
+  return BIDCHAIN_ALLOWED_HOSTS.has(normalizeHostname(hostname));
+}
+
 export function assertAllowedBidchainUrl(raw: string): URL {
   try {
     return assertAllowedUrl(raw, BIDCHAIN_ALLOWED_HOSTS, "BIDchain");
@@ -40,30 +46,33 @@ export function assertAllowedBidchainUrl(raw: string): URL {
   }
 }
 
-export async function fetchBidchainHtml(url: string): Promise<string> {
+export async function fetchBidchainHtmlWithPage(page: Page, url: string): Promise<string> {
   const parsed = assertAllowedBidchainUrl(url);
+  const response = await page.goto(parsed.toString(), {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await page.waitForTimeout(1500);
+  try {
+    assertFinalUrlAllowed(page.url(), BIDCHAIN_ALLOWED_HOSTS, "BIDchain");
+    assertHttpOk(response, parsed.toString());
+  } catch (e) {
+    throw new BidchainFetchError(e instanceof Error ? e.message : String(e));
+  }
+  const html = await page.content();
+  try {
+    assertNotCloudflareBlock(html, parsed.toString());
+  } catch (e) {
+    throw new BidchainFetchError(e instanceof Error ? e.message : String(e));
+  }
+  return html;
+}
+
+export async function fetchBidchainHtml(url: string): Promise<string> {
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage();
-    // networkidle often hangs on auction sites with long-polling; DOM is enough.
-    const response = await page.goto(parsed.toString(), {
-      waitUntil: "domcontentloaded",
-      timeout: 60_000,
-    });
-    await page.waitForTimeout(1500);
-    try {
-      assertFinalUrlAllowed(page.url(), BIDCHAIN_ALLOWED_HOSTS, "BIDchain");
-      assertHttpOk(response, parsed.toString());
-    } catch (e) {
-      throw new BidchainFetchError(e instanceof Error ? e.message : String(e));
-    }
-    const html = await page.content();
-    try {
-      assertNotCloudflareBlock(html, parsed.toString());
-    } catch (e) {
-      throw new BidchainFetchError(e instanceof Error ? e.message : String(e));
-    }
-    return html;
+    return await fetchBidchainHtmlWithPage(page, url);
   } finally {
     await browser.close();
   }

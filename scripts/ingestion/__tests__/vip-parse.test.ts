@@ -16,6 +16,14 @@ describe("extractFinanceiraEventIds", () => {
     `;
     expect(extractFinanceiraEventIds(html).sort()).toEqual(["150726bspa", "160726bsma"]);
   });
+
+  it("includes financeiras-labeled events without bs slug", () => {
+    const html = `
+      <div>Financeiras</div>
+      <a href="/evento/detalhes/170726prefpilar">Pilar</a>
+    `;
+    expect(extractFinanceiraEventIds(html)).toContain("170726prefpilar");
+  });
 });
 
 describe("extractVipDetailFromHtml", () => {

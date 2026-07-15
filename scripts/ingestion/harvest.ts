@@ -1,7 +1,11 @@
+import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
-import type { HarvestSummary } from "./lib/harvest-runner";
+import {
+  createHarvestSummary,
+  type HarvestSummary,
+} from "./lib/harvest-runner";
 import { harvestBradescoLots } from "./bradesco-harvest";
 import { harvestVipLots } from "./vip-harvest";
 import { harvestBidchainLots } from "./bidchain-harvest";
@@ -11,14 +15,30 @@ import { harvestSantanderLots } from "./santander-harvest";
 export type HarvestSource = "bradesco" | "vip" | "bidchain" | "mgl" | "santander";
 
 export type CombinedHarvestSummary = {
-  sources: Record<string, HarvestSummary>;
+  sources: Record<string, HarvestSummary | FailedHarvestSummary>;
   totalWritten: number;
   totalErrors: number;
   durationMs: number;
   startedAt: string;
 };
 
+export type FailedHarvestSummary = HarvestSummary & {
+  failed: true;
+  failureReason: string;
+};
+
 const ALL_SOURCES: HarvestSource[] = ["bradesco", "vip", "bidchain", "mgl", "santander"];
+const VALID_SOURCES = new Set<string>(ALL_SOURCES);
+
+export const SANTANDER_LOTS_PATH = "/tmp/santander-lots.json";
+export const SANTANDER_HTML_CAPTURE = "/tmp/santander-retomados.html";
+
+export function parseHarvestSource(raw: string): HarvestSource {
+  if (!VALID_SOURCES.has(raw)) {
+    throw new Error(`Invalid --source "${raw}". Use one of: ${ALL_SOURCES.join(", ")}`);
+  }
+  return raw as HarvestSource;
+}
 
 function parseArgs(argv: string[]): {
   source?: HarvestSource;
@@ -39,7 +59,7 @@ function parseArgs(argv: string[]): {
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === "--source" && argv[i + 1]) source = argv[++i] as HarvestSource;
+    if (arg === "--source" && argv[i + 1]) source = parseHarvestSource(argv[++i]!);
     else if (arg === "--all") all = true;
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--limit" && argv[i + 1]) limit = Number(argv[++i]);
@@ -60,6 +80,31 @@ function runStep(label: string, args: string[]): void {
   if (result.status !== 0) {
     throw new Error(`${label} failed with exit ${result.status}`);
   }
+}
+
+function runGoalFilter(): void {
+  spawnSync(
+    "./node_modules/.bin/tsx",
+    ["scripts/ingestion/apply-goal-filter.ts", "--min-goal-fit", "50"],
+    { encoding: "utf8", cwd: process.cwd(), stdio: "inherit" },
+  );
+}
+
+function ensureSantanderLotsFile(): void {
+  if (existsSync(SANTANDER_LOTS_PATH)) return;
+  if (existsSync(SANTANDER_HTML_CAPTURE)) {
+    runStep("santander-list", [
+      "scripts/ingestion/santander-list.ts",
+      "--html",
+      SANTANDER_HTML_CAPTURE,
+      "--out",
+      SANTANDER_LOTS_PATH,
+    ]);
+    return;
+  }
+  throw new Error(
+    `Missing ${SANTANDER_LOTS_PATH}. Run santander-probe.ts, save listing HTML to ${SANTANDER_HTML_CAPTURE}, then santander-list.ts --html ...`,
+  );
 }
 
 export async function runHarvestSource(
@@ -151,8 +196,9 @@ export async function runHarvestSource(
       });
     }
     case "santander": {
+      ensureSantanderLotsFile();
       return harvestSantanderLots({
-        lotsPath: "/tmp/santander-lots.json",
+        lotsPath: SANTANDER_LOTS_PATH,
         fetchDir: "/tmp/santander-harvest/lots",
         summaryOut: "/tmp/santander-harvest/write-summary.json",
         skipExisting: true,
@@ -162,6 +208,15 @@ export async function runHarvestSource(
     default:
       throw new Error(`Unknown source: ${source satisfies never}`);
   }
+}
+
+function failedSummary(source: HarvestSource, reason: string): FailedHarvestSummary {
+  return {
+    ...createHarvestSummary(source),
+    failed: true,
+    failureReason: reason,
+    errors: [{ url: source, error: reason }],
+  };
 }
 
 export async function runHarvest(options: {
@@ -174,16 +229,35 @@ export async function runHarvest(options: {
 }): Promise<CombinedHarvestSummary> {
   const startedAt = new Date().toISOString();
   const start = Date.now();
-  const sources: Record<string, HarvestSummary> = {};
+  const sources: Record<string, HarvestSummary | FailedHarvestSummary> = {};
   let totalWritten = 0;
   let totalErrors = 0;
+  const deferGoalFilter = options.sources.length > 1;
+  const perSourceGoalFilter =
+    deferGoalFilter ? false : options.applyGoalFilter !== false;
 
   for (const source of options.sources) {
-    const summary = await runHarvestSource(source, options);
-    sources[source] = summary;
-    totalWritten +=
-      summary.written.created + summary.written.updated + summary.written.merged;
-    totalErrors += summary.errors.length;
+    try {
+      const summary = await runHarvestSource(source, {
+        dryRun: options.dryRun,
+        limit: options.limit,
+        excludeInsurer: options.excludeInsurer,
+        applyGoalFilter: perSourceGoalFilter,
+      });
+      sources[source] = summary;
+      totalWritten +=
+        summary.written.created + summary.written.updated + summary.written.merged;
+      totalErrors += summary.errors.length;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const summary = failedSummary(source, reason);
+      sources[source] = summary;
+      totalErrors += 1;
+    }
+  }
+
+  if (deferGoalFilter && options.applyGoalFilter !== false && !options.dryRun) {
+    runGoalFilter();
   }
 
   const combined: CombinedHarvestSummary = {

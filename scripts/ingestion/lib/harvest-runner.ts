@@ -5,6 +5,12 @@ import { assertSafeOutPath } from "../fetch-guards";
 import type { WriteLeadInput, WriteLeadResult } from "../write-lead";
 
 export const DEFAULT_CEILING = 1000;
+/** Delay between lot fetches to reduce Cloudflare / rate-limit blocks. */
+export const FETCH_DELAY_MS = 300;
+
+export function throttleFetch(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, FETCH_DELAY_MS));
+}
 
 export type HarvestSummary = {
   source: string;
@@ -12,6 +18,7 @@ export type HarvestSummary = {
   written: { created: number; updated: number; merged: number };
   skipped: Record<string, number>;
   errors: Array<{ url: string; error: string }>;
+  sampleUrls: string[];
   durationMs: number;
   startedAt: string;
 };
@@ -23,6 +30,7 @@ export function createHarvestSummary(source: string): HarvestSummary {
     written: { created: 0, updated: 0, merged: 0 },
     skipped: {},
     errors: [],
+    sampleUrls: [],
     durationMs: 0,
     startedAt: new Date().toISOString(),
   };

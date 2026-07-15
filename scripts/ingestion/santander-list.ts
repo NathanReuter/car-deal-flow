@@ -34,6 +34,16 @@ export function extractSantanderLotId(url: string): string | null {
   return m?.[1] ?? null;
 }
 
+export function normalizeSantanderLotUrl(raw: string, baseUrl: string): string | null {
+  try {
+    const url = raw.startsWith("http") ? raw : new URL(raw, baseUrl).toString();
+    assertAllowedSantanderUrl(url);
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 export function extractSantanderLotsFromHtml(
   html: string,
   baseUrl: string,
@@ -46,9 +56,8 @@ export function extractSantanderLotsFromHtml(
     const path = match[1] ?? "";
     if (!path || /login|cadastro|politica|termos/i.test(path)) continue;
 
-    const url = path.startsWith("http")
-      ? path
-      : `${base.origin}${path.startsWith("/") ? path : `/${path}`}`;
+    const url = normalizeSantanderLotUrl(path, baseUrl);
+    if (!url) continue;
 
     const id = extractSantanderLotId(url) ?? url;
     if (seen.has(id)) continue;

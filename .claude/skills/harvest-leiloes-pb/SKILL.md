@@ -47,6 +47,8 @@ operator explicitly wants them (they will fail goal fit / risk).
      **skip** (colisão / monta / sucata not wanted)
    - `descricao` for brand/model/year
    - plate/chassis only when clearly present
+   - auction date/time (e.g. `dataLeilao` or an equivalent field/label) when
+     clearly present; leave it off if absent or ambiguous — never guess
 4. Write:
 
 ```bash
@@ -64,6 +66,7 @@ operator explicitly wants them (they will fail goal fit / risk).
   [--chassis "<chassis>"] \
   [--city "<city>"] \
   [--state "<UF>"] \
+  [--auction-date "<ISO-8601 date/time>"] \
   [--notes "<comitente / sucata flag / procedência>"]
 ```
 
@@ -71,9 +74,15 @@ operator explicitly wants them (they will fail goal fit / risk).
 
 ```bash
 ./node_modules/.bin/tsx scripts/ingestion/apply-goal-filter.ts --min-goal-fit 50
+./node_modules/.bin/tsx scripts/ingestion/expire-stale-leads.ts
 ```
 
-6. Report: found / written / merged / skipped (with reasons) / parked / rejected.
+`expire-stale-leads.ts` soft-deletes `new_lead`/`parked` cars whose known
+auction date(s) have all passed (moved to `expired`, hidden from default
+views but still queryable). Any unknown auction date blocks expiry.
+
+6. Report: found / written / merged / skipped (with reasons) / parked /
+   rejected / expired.
 
 ## Goal-aware harvest
 

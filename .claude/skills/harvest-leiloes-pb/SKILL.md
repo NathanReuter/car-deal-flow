@@ -48,7 +48,10 @@ operator explicitly wants them (they will fail goal fit / risk).
    - `descricao` for brand/model/year
    - plate/chassis only when clearly present
    - auction date/time (e.g. `dataLeilao` or an equivalent field/label) when
-     clearly present; leave it off if absent or ambiguous — never guess
+     clearly present; leave it off if absent or ambiguous — never guess.
+     On a re-harvest, re-extract and re-pass it every run — write-lead
+     overwrites the stored date unconditionally, so skipping the flag on a
+     routine refresh silently erases a date it already knew.
 4. Write:
 
 ```bash

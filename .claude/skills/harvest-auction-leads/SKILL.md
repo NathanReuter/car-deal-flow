@@ -76,6 +76,7 @@ Manual pipeline:
 | FIPE unknown | Leave null (write-lead never stores 0) |
 | Same `sourceUrl` again | Update via write-lead (does not clobber researching+) |
 | Auction date not stated or ambiguous on page/edital | Leave `--auction-date` off — write-lead stores `null`. Never guess a date. |
+| Re-harvesting a lot with a previously-known auction date | Re-extract and re-pass `--auction-date` every run — write-lead overwrites it unconditionally (like mileage), so omitting the flag on a routine price/photo refresh silently erases a date it already knew. |
 
 ## Bradesco Vitrine (deterministic — preferred)
 

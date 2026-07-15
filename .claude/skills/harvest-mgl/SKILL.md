@@ -17,6 +17,22 @@ Corp repasse auctions only (batidos/sucatas excluded at auction level):
 
 Read `/tmp/mgl-harvest/write-summary.json`. Do **not** read lot HTML unless debugging.
 
+After the harvest, run the expiry sweep so soft-deleted lots stay out of the
+default views:
+
+```bash
+npx tsx scripts/ingestion/expire-stale-leads.ts
+```
+
+**Known gap:** `mgl-harvest.ts` does not currently extract or write an
+auction date (e.g. `Encerramento`), so `CarSource.auctionDate` stays `null`
+for every MGL lot and the sweep above will never expire them (null dates
+fail closed — this is safe, just inert for this source). If per-lot
+extraction is added back, wire it through `write-lead.ts --auction-date`.
+Once wired, re-extract and re-pass the date on every re-harvest —
+`write-lead.ts` overwrites the stored value unconditionally, so skipping it
+on a routine refresh silently erases a date already known.
+
 ## Manual steps (debugging only)
 
 ```bash

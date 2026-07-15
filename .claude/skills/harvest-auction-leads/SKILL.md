@@ -80,10 +80,23 @@ browsing VIP Leilões directly:
 | FIPE unknown | Leave null (write-lead never stores 0) |
 | Same `sourceUrl` again | Update via write-lead (does not clobber researching+) |
 
-## Procedure
+## Bradesco Vitrine (deterministic — preferred)
 
-1. For **Bradesco Vitrine**: open the vehicle catalog, inspect network for the
-   JSON API, fetch lots from the API. Map minimum bid → price.
+Run the full catalog pipeline without reading HTML:
+
+```bash
+./node_modules/.bin/tsx scripts/ingestion/bradesco-list.ts --out /tmp/bradesco-harvest/list.json
+./node_modules/.bin/tsx scripts/ingestion/bradesco-fetch.ts --list /tmp/bradesco-harvest/list.json --out-dir /tmp/bradesco-harvest/details --skip-existing
+./node_modules/.bin/tsx scripts/ingestion/bradesco-harvest.ts --list /tmp/bradesco-harvest/list.json --details-dir /tmp/bradesco-harvest/details
+```
+
+Read `/tmp/bradesco-harvest/write-summary.json` and report kept/skipped/written counts.
+Use `--dry-run` on `bradesco-harvest.ts` to tally without DB writes. List step filters
+non-car categories, sinistrado recovery, and damaged descriptions before fetch.
+
+## Procedure (legacy per-lot — VIP only; avoid for Bradesco)
+
+1. For **Bradesco Vitrine**: use the deterministic pipeline above — do **not** browse HTML per lot.
 2. For **VIP Leilões**: use `vip-leiloes-fetch.ts` (see the authenticated
    fetch section above) to pull the Financeiras event listing page, then
    each lot's detail page. If an edital PDF is linked, fetch and read it for

@@ -1,0 +1,36 @@
+{
+  "total_pages": 2,
+  "total_auctions": 3,
+  "data": [
+    {
+      "guid": "aaa-111",
+      "name": "VOLKSWAGEN - T CROSS SENSE TSI - 2022 / 2022",
+      "price": 47000,
+      "category": "Carro",
+      "slug": "vw-t-cross-sense-tsi-2022-2022-9_2",
+      "description": "Vw, T Cross Sense Tsi, 2022, 2022, Preta, Flex, Km 116406",
+      "city": "São Paulo",
+      "state": "São Paulo",
+      "type": "vehicles"
+    },
+    {
+      "guid": "bbb-222",
+      "name": "HONDA - CG 160 - 2020 / 2020",
+      "price": 5000,
+      "category": "Moto",
+      "slug": "honda-cg-160",
+      "description": "Moto",
+      "type": "vehicles"
+    },
+    {
+      "guid": "ccc-333",
+      "name": "FIAT - UNO - 2015 / 2015",
+      "price": 12000,
+      "category": "Carro",
+      "slug": "fiat-uno-sinistrado",
+      "description": "Fiat Uno Sinistrado retomado",
+      "vehicle_type_of_recovery": "Sinistrado",
+      "type": "vehicles"
+    }
+  ]
+}

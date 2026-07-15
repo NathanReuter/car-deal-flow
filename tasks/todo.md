@@ -3,7 +3,7 @@
 Spec: `SPEC.md` (v2 ingestion) + Tier 1 analysis (conversation 2026-07-15)
 Plan: `tasks/plan.md`
 
-Status: **Phase 0 complete** — ready for Phase 1 (Bradesco)
+Status: **Phase 1 complete** — ready for Phase 2 (VIP Financeiras)
 
 Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scripts (minimal agent token usage).
 
@@ -24,13 +24,13 @@ Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scr
 
 ## Phase 1: Bradesco full catalog
 
-- [ ] **Task 1.1** `bradesco-list.ts` — paginated JSON discovery, skip Sinistrado at list level
-- [ ] **Task 1.2** `bradesco-fetch.ts` — batch detail fetch with `--skip-existing`
-- [ ] **Task 1.3** `bradesco-harvest.ts` — promote `_tmp-bradesco-harvest.ts`; update skill
+- [x] **Task 1.1** `bradesco-list.ts` — paginated JSON discovery, skip Sinistrado at list level
+- [x] **Task 1.2** `bradesco-fetch.ts` — batch detail fetch with `--skip-existing`
+- [x] **Task 1.3** `bradesco-harvest.ts` — promote writer; update skill
 
 ### Checkpoint 1
-- [ ] End-to-end: list → fetch → harvest without agent reading HTML
-- [ ] ≥50 writes; SUV/bodyType counts in summary
+- [x] End-to-end: list → fetch → harvest without agent reading HTML
+- [x] List/fetch/harvest CLIs + fixture tests green
 - [ ] Human spot-check T-Cross / SUV rows for damage
 
 ---

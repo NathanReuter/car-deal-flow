@@ -1,64 +1,122 @@
-# Todo: Multi-source auction ingestion (v2)
+# Todo: Tier 1 Coverage — Deterministic Full-Catalog Harvest
 
-Spec: `SPEC.md`  
+Spec: `SPEC.md` (v2 ingestion) + Tier 1 analysis (conversation 2026-07-15)
 Plan: `tasks/plan.md`
 
-Status: **T7–T8 done** — Checkpoint C ready for owner sign-off (human Pipeline review still recommended)
+Status: **Phase 0 complete** — ready for Phase 1 (Bradesco)
 
-Schema decision: keep **`CarSource` table** (confirmed).
+Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scripts (minimal agent token usage).
 
-## Phase 1 — Dedup foundation
+---
 
-- [x] **T1** `CarSource` schema + migration + backfill from existing `Car` primary source
-- [x] **T2** `write-lead`: upsert `CarSource`; merge by chassis/plate (first-wins primary) + tests
-- [x] **T3** Car detail UI lists all source links
+## Phase 0: Shared harvest infrastructure
 
-### Checkpoint A
-- [x] `npm test` + `npm run build` green
-- [x] CLI merge demo: one car, two `CarSource` rows
-- [ ] Human review before harvests
+- [x] **Task 0.1** `scripts/ingestion/lib/parse-common.ts` — BRL, km, year, brand, bodyType + tests
+- [x] **Task 0.2** `scripts/ingestion/lib/listing-filters.ts` — batidos, insurer, sinistrado filters + tests
+- [x] **Task 0.3** `scripts/ingestion/lib/harvest-runner.ts` — ceiling, spawnWriteLead, summary JSON + tests
 
-## Phase 2 — Per-source harvests
+### Checkpoint 0
+- [x] `npx vitest run scripts/ingestion/__tests__/` passes
+- [x] `npm test` + `npm run build` pass
+- [ ] Human review before source harvests
 
-- [x] **T4** BIDchain: public fetch script + `harvest-bidchain` skill (+ fixture/checklist)
-- [x] **T5** Leilões PB: probe → fetch + `harvest-leiloes-pb` skill (live: VW T-Cross Mapfre lot 40329)
-- [x] **T6** MGL: probe → fetch + `harvest-mgl` skill (live: Ford Ka lot 208255; CF needs stealth fetch)
+---
 
-### Checkpoint B
-- [x] ≥1 live write per source — BIDchain + Leilões PB + MGL
-- [x] Cross-source merge demo — chassis `9BWZZZ377VT000001` → one car, VIP primary + BIDchain `CarSource`
-- [ ] Human review sample rows (owner)
+## Phase 1: Bradesco full catalog
 
-## Phase 3 — Polish
+- [ ] **Task 1.1** `bradesco-list.ts` — paginated JSON discovery, skip Sinistrado at list level
+- [ ] **Task 1.2** `bradesco-fetch.ts` — batch detail fetch with `--skip-existing`
+- [ ] **Task 1.3** `bradesco-harvest.ts` — promote `_tmp-bradesco-harvest.ts`; update skill
 
-- [x] **T7** Goal-aware harvest guidance + v1 skill points to v2 skills; `goal-hint.ts`; 1000 ceiling documented
-- [x] **T8** E2E verification: review fetch hardening + live writes; grep — no bid-placement scripts; `npm test` + `npm run build` green
+### Checkpoint 1
+- [ ] End-to-end: list → fetch → harvest without agent reading HTML
+- [ ] ≥50 writes; SUV/bodyType counts in summary
+- [ ] Human spot-check T-Cross / SUV rows for damage
 
-### Checkpoint C
-- [x] SPEC success criteria met (code/skills path)
+---
+
+## Phase 2: VIP Financeiras deep harvest
+
+- [ ] **Task 2.1** `vip-list-financeiras.ts` — dynamic event discovery (not hardcoded IDs)
+- [ ] **Task 2.2** `vip-fetch-batch.ts` — incremental batch detail fetch
+- [ ] **Task 2.3** `vip-harvest.ts` — promote `_tmp-vip-*`; optional `--exclude-insurer`
+
+### Checkpoint 2
+- [ ] ≥100 lot URLs discovered; ≥80 writes
+- [ ] `--exclude-insurer` keeps Mapfre-style collision lots out of `new_lead`
+- [ ] Human review sample rows
+
+---
+
+## Phase 3: BIDchain / Caixa at scale
+
+- [ ] **Task 3.1** `bidchain-list.ts` — vehicle lot discovery (bidchain + white-labels)
+- [ ] **Task 3.2** `bidchain-harvest.ts` — promote `_tmp-bidchain-harvest-write.ts`; update skill
+
+### Checkpoint 3
+- [ ] ≥30 BIDchain writes (up from 1)
+- [ ] Skill doc: single command
+- [ ] Human review Caixa-tagged lots
+
+---
+
+## Phase 4: MGL corporate repossession only
+
+- [ ] **Task 4.1** `mgl-list-auctions.ts` — corp repasse only; exclude batidos/sucatas at auction level
+- [ ] **Task 4.2** `mgl-harvest.ts` — promote `mgl-harvest-write.ts` + auction filter; update skill
+
+### Checkpoint 4
+- [ ] Zero batidos auction writes (no MGL 7157-style bulk rejections)
+- [ ] ≥30 corp repasse writes
+- [ ] Human review sample rows
+
+---
+
+## Phase 5: Santander Retomados (new source)
+
+- [ ] **Task 5.1** Probe + `docs/superpowers/specs/2026-07-15-santander-retomados-probe.md`
+- [ ] **Task 5.2** `santander-list.ts` + `santander-fetch.ts` + tests
+- [ ] **Task 5.3** `santander-harvest.ts` + `harvest-santander` skill
+
+### Checkpoint 5
+- [ ] Probe reviewed by owner
+- [ ] ≥10 Santander writes in first full run
+- [ ] Human review vs insurer-lot quality
+
+---
+
+## Phase 6: Orchestrator + skill slim-down
+
+- [ ] **Task 6.1** `harvest.ts` orchestrator + `npm run harvest` scripts
+- [ ] **Task 6.2** Slim all harvest skills to orchestrator commands (≤10 lines primary instruction)
+
+### Checkpoint 6 (Final)
+- [ ] `npm test` + `npm run build` green
+- [ ] `harvest.ts --all` produces ≥200 combined writes/updates
+- [ ] No source stuck at ≤1 lot in DB
+- [ ] Agent harvest = 1 script call + read summary (token benchmark)
 - [ ] Owner sign-off
 
-## Review follow-ups (2026-07-14)
+---
 
-- [x] Shared `fetch-guards.ts`: case-insensitive hosts, post-redirect allowlist, CF/HTTP fail-closed, safe `--out` roots
-- [x] Aligned BIDchain / Leilões PB / MGL fetch CLIs
+## Success Metrics
 
-## E2E summary (T8)
+| Source | Current | Target |
+|--------|---------|--------|
+| Total | 188 | ≥400 |
+| BIDchain | 1 | ≥30 |
+| VIP | 34 | ≥80 |
+| Bradesco | 100 | ≥150 |
+| MGL | 52 | ≥40 corp-only, 0 batidos rejects |
+| Santander | 0 | ≥10 |
 
-| Source | Live write example | Notes |
-|---|---|---|
-| BIDchain | Saveiro lot `78224` | Stealth + CF/HTTP guards |
-| Leilões PB | VW T-Cross lot `40329` | Plain Playwright; re-probe if CF |
-| MGL | Ford Ka lot `208255` | Stealth required (CF) |
-| Cross-source | Virtus demo chassis | `merged: true`; primary VIP unchanged |
-
-Goal hint (active): Family SUV/Hatch — budget 40–100k, minYear 2022, brands Toyota/Honda/VW/Hyundai/Chevrolet/Byd.
-
-Bidding: skills forbid login/bid; no placement scripts under `scripts/ingestion`.
+---
 
 ## Notes
 
-- Safety ceiling: **1000 writes/source/run** (documented; not hard-enforced in code)
-- Bidding: out of scope
-- **Damage gate:** colisão / sinistro / monta / sucata / batido → hard reject; only integral/conservado
-- Parallel after Checkpoint A: T4 / T5 / T6
+- Promote `_tmp-*` scripts to production; archive/delete tmp after each phase
+- `--exclude-insurer` optional flag for bank-repossession focus (Mapfre lesson)
+- Safety ceiling: 1000 writes/source/run
+- Out of scope: cron scheduling, Tier 2 watchlist polling, Leilões PB expansion
+- Prior completed work: multi-source v2 (`tasks/todo.md` git history)
+- Parallel plan exists: auction date + expiry (not blocked by Tier 1)

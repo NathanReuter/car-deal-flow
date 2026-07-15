@@ -1,0 +1,135 @@
+import type { BodyType } from "../../../src/lib/types";
+
+const NON_CAR =
+  /\b(moto|motocicleta|scooter|bike|quadriciclo|triciclo|caminh[aã]o|truck|onibus|ônibus|micro[oô]nibus|reboque|carreta|semirreboque|implemento|empilhadeira|trator|m[aá]quina|jet\s*ski|lancha|barco|embarca[cç][aã]o)\b/i;
+
+export const MODEL_BODY_RULES: Array<{ re: RegExp; body: BodyType }> = [
+  {
+    re: /\b(s10|hilux|ranger|amarok|frontier|l200|triton|oroch|strada|saveiro|montana|toro|maverick|duster\s*oroch|f[-]?100|f[-]?250|f[-]?350|f[-]?4000|courier|colorado|silverado|foison)\b/i,
+    body: "pickup",
+  },
+  {
+    re: /\b(creta|tracker|t[- ]?cross|tcross|kicks|renegade|compass|commander|hr[-]?v|hrv|wr[-]?v|wrv|duster|captur|niva|sw4|sw[-]?4|rav4|corolla\s*cross|nivus|taos|tiggo|pulse|fastback|ecosport|aircross|c3\s*aircross|tucson|sportage|ix35|jimny|bronco|territory|pajero|outlander|asx|edge\b|equinox|trailblazer|santa\s*fe|sorento|kuga|cayenne|macan|x1\b|x3\b|x5\b|q3\b|q5\b|q7\b|tiguan|virtus\s*cross|freemont|journey|ml\s*350|ml350|gl[aaceks]\d*)\b/i,
+    body: "suv",
+  },
+  {
+    re: /\b(spin(?!\s*activ)|doblo|idea|livina|meriva|zafira|carnival|ducato|boxer|jumper|jumpy|master|sprinter|transit|kangoo|partner|berlingo|trafic|picasso)\b/i,
+    body: "minivan",
+  },
+  {
+    re: /\b(fiesta\s*sedan|corsa\s*sedan|ka\s*(se\s*)?(1\.\d)?\s*sd|focus\s*(se\s*)?sedan|civic|corolla(?!\s*cross)|city\b|virtus|voyage|prisma|cobalt|onix\s*plus|cronos|argo\s*sedan|siena|grand\s*siena|logan|versa|sentra|fluence|jetta|passat|fusion|symbol|etios\s*sedan|hb20s|arrizo|linea|bora|sedan|300c|xe\b|320i|328i|330i|520i|530i|a3\s*sedan|a4\b|a6\b|c180|c200|c250)\b/i,
+    body: "sedan",
+  },
+  {
+    re: /\b(gol|celta|uno|palio(?!\s*wk)|ka\b|fiesta(?!\s*sedan)|fox|polo(?!\s*sedan)|hb20(?!s)|onix(?!\s*plus)|sandero|kwid|mobi|argo(?!\s*sedan)|fit\b|march|eti?os(?!\s*sedan)|yaris(?!\s*sedan)|corsa(?!\s*sedan)|agile|up!|\bup\b|clio|208|207|c3(?!\s*aircross)|golf|i30|cerato|rio\b|soul|focus(?!\s*sedan)|punto|bravo|stilo|hatch)\b/i,
+    body: "hatch",
+  },
+  { re: /\b(mustang|camaro|tt\b|cayman|911)\b/i, body: "coupe" },
+  { re: /\b(weekend|spacefox|fiorino|parati|quantum|palio\s*wk)\b/i, body: "wagon" },
+];
+
+export const BRAND_ALIASES: Record<string, string> = {
+  VOLKSWAGEN: "Volkswagen",
+  CHEVROLET: "Chevrolet",
+  TOYOTA: "Toyota",
+  FORD: "Ford",
+  FIAT: "Fiat",
+  HONDA: "Honda",
+  HYUNDAI: "Hyundai",
+  RENAULT: "Renault",
+  NISSAN: "Nissan",
+  JEEP: "Jeep",
+  PEUGEOT: "Peugeot",
+  CITROEN: "Citroën",
+  "CITROËN": "Citroën",
+  BMW: "BMW",
+  AUDI: "Audi",
+  KIA: "Kia",
+  MITSUBISHI: "Mitsubishi",
+  MERCEDES: "Mercedes-Benz",
+  "MERCEDES-BENZ": "Mercedes-Benz",
+  "MERCEDES BENZ": "Mercedes-Benz",
+  CHERY: "Chery",
+  "CAOA CHERY": "Caoa Chery",
+  BYD: "BYD",
+  RAM: "Ram",
+  VOLVO: "Volvo",
+  LANDROVER: "Land Rover",
+  "LAND ROVER": "Land Rover",
+  MINI: "Mini",
+  Mini: "Mini",
+  GM: "Chevrolet",
+  VW: "Volkswagen",
+};
+
+export function parseBrl(raw: string | null | undefined): number | null {
+  if (!raw?.trim()) return null;
+
+  const trimmed = raw.trim();
+  const brStyle = trimmed.match(/([\d.]+),(\d{2})/);
+  if (brStyle) {
+    const n = Number(brStyle[1].replace(/\./g, "") + "." + brStyle[2]);
+    if (Number.isFinite(n) && n > 0) return Math.round(n);
+  }
+
+  const cleaned = trimmed.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = Number(cleaned);
+  if (Number.isFinite(n) && n > 0) return Math.round(n);
+
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return null;
+  const fromDigits = Number(digits) / 100;
+  return Number.isFinite(fromDigits) && fromDigits > 0 ? Math.round(fromDigits) : null;
+}
+
+export function parseKm(raw: string | null | undefined): number | null {
+  if (!raw?.trim()) return null;
+  if (/n[aã]o\s+informado|sem\s+informa/i.test(raw)) return null;
+
+  const kmMatch = raw.match(/Km\s*([0-9.]+)/i);
+  if (kmMatch) {
+    const n = Number(kmMatch[1].replace(/\./g, ""));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }
+
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  const n = Number(digits);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+export function parseYearFromText(
+  text: string | null | undefined,
+): { year: number; modelYear?: number } | null {
+  if (!text?.trim()) return null;
+  const blob = text.trim();
+
+  const pair = blob.match(/(\d{4})\s*\/\s*(\d{4})/);
+  if (pair) {
+    const year = Number(pair[1]);
+    const modelYear = Number(pair[2]);
+    if (year >= 1980 && year <= 2030 && modelYear >= 1980 && modelYear <= 2030) {
+      return { year, modelYear };
+    }
+  }
+
+  const single = blob.match(/\b(19|20)\d{2}\b/);
+  if (!single) return null;
+  const year = Number(single[0]);
+  return year >= 1980 && year <= 2030 ? { year } : null;
+}
+
+export function normalizeBrand(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  return BRAND_ALIASES[trimmed] || BRAND_ALIASES[trimmed.toUpperCase()] || trimmed;
+}
+
+export function inferBodyType(brand: string, model: string, blob: string): BodyType | null {
+  const text = `${brand} ${model} ${blob}`;
+  if (NON_CAR.test(text)) return null;
+  for (const { re, body } of MODEL_BODY_RULES) {
+    if (re.test(model) || re.test(text)) return body;
+  }
+  return null;
+}

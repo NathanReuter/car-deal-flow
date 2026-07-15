@@ -39,6 +39,9 @@ normal browser — do not invent fields.
    - Brand/model/year from `MARCA/MODELO` + `ANO` / `ANO/MODELO`
    - Mileage when labeled `KM:`
    - Plate/chassis only when clearly present (many lots say “No chassi”)
+   - Auction date/time, typically labeled `Encerramento` or shown on the
+     leilão listing page; leave it off if unclear or only a countdown —
+     never guess an absolute date from a countdown
 4. Write:
 
 ```bash
@@ -56,6 +59,7 @@ normal browser — do not invent fields.
   [--chassis "<chassis>"] \
   [--city "<city>"] \
   [--state "<UF>"] \
+  [--auction-date "<ISO-8601 date/time>"] \
   [--notes "<comitente / código / status>"]
 ```
 
@@ -66,9 +70,15 @@ Tag `sellerType`: Caixa comitente → `caixa_recovery`; named bank →
 
 ```bash
 ./node_modules/.bin/tsx scripts/ingestion/apply-goal-filter.ts --min-goal-fit 50
+./node_modules/.bin/tsx scripts/ingestion/expire-stale-leads.ts
 ```
 
-6. Report: found / written / merged / skipped (with reasons) / parked / rejected.
+`expire-stale-leads.ts` soft-deletes `new_lead`/`parked` cars whose known
+auction date(s) have all passed (moved to `expired`, hidden from default
+views but still queryable). Any unknown auction date blocks expiry.
+
+6. Report: found / written / merged / skipped (with reasons) / parked /
+   rejected / expired.
 
 ## Goal-aware harvest
 

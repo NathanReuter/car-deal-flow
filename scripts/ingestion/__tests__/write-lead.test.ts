@@ -353,4 +353,58 @@ describe("writeLead", () => {
     expect(sources).toHaveLength(1);
     expect(sources[0]!.sourcePlatform).toBe("Bradesco Vitrine");
   });
+
+  it("persists auctionDate onto the CarSource row on create", async () => {
+    const auctionDate = new Date("2026-08-01T14:00:00-03:00");
+    const result = await writeLead(ctx.prisma, { ...baseInput, auctionDate });
+
+    const source = await ctx.prisma.carSource.findUnique({ where: { sourceUrl: baseInput.sourceUrl } });
+    expect(source!.auctionDate).toEqual(auctionDate);
+    expect(result.created).toBe(true);
+  });
+
+  it("defaults CarSource.auctionDate to null when omitted", async () => {
+    const result = await writeLead(ctx.prisma, baseInput);
+    const source = await ctx.prisma.carSource.findUnique({ where: { sourceUrl: baseInput.sourceUrl } });
+    expect(source!.auctionDate).toBeNull();
+    expect(result.created).toBe(true);
+  });
+
+  it("refreshes CarSource.auctionDate on re-harvest of the same source", async () => {
+    await writeLead(ctx.prisma, { ...baseInput, auctionDate: new Date("2026-08-01T14:00:00-03:00") });
+    await writeLead(ctx.prisma, { ...baseInput, auctionDate: new Date("2026-09-15T14:00:00-03:00") });
+
+    const source = await ctx.prisma.carSource.findUnique({ where: { sourceUrl: baseInput.sourceUrl } });
+    expect(source!.auctionDate).toEqual(new Date("2026-09-15T14:00:00-03:00"));
+  });
+
+  it("resets an expired car to new_lead when the re-harvested source has a future auctionDate", async () => {
+    const first = await writeLead(ctx.prisma, { ...baseInput, auctionDate: new Date("2026-01-01T00:00:00Z") });
+    await ctx.prisma.car.update({
+      where: { id: first.carId },
+      data: { pipelineStage: "expired", stageReason: "Auction date(s) passed." },
+    });
+
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const second = await writeLead(ctx.prisma, { ...baseInput, auctionDate: future });
+
+    expect(second.carId).toBe(first.carId);
+    const car = await ctx.prisma.car.findUnique({ where: { id: first.carId } });
+    expect(car!.pipelineStage).toBe("new_lead");
+    expect(car!.stageReason).toBeNull();
+  });
+
+  it("keeps an expired car expired when the re-harvested source still has no future auctionDate", async () => {
+    const first = await writeLead(ctx.prisma, { ...baseInput, auctionDate: new Date("2026-01-01T00:00:00Z") });
+    await ctx.prisma.car.update({
+      where: { id: first.carId },
+      data: { pipelineStage: "expired", stageReason: "Auction date(s) passed." },
+    });
+
+    await writeLead(ctx.prisma, { ...baseInput, auctionDate: new Date("2026-01-02T00:00:00Z") });
+
+    const car = await ctx.prisma.car.findUnique({ where: { id: first.carId } });
+    expect(car!.pipelineStage).toBe("expired");
+    expect(car!.stageReason).toBe("Auction date(s) passed.");
+  });
 });

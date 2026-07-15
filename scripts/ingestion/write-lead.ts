@@ -15,6 +15,7 @@ import {
   detectDamageSignals,
   type DamageSignalResult,
 } from "../../src/lib/filters/damageSignals";
+import { getNextAuctionDate } from "../../src/lib/auction";
 
 const RISK_KEYS: RiskCheckKey[] = [
   "registration_consistency",
@@ -64,8 +65,9 @@ const VALID_BODY_TYPES: BodyType[] = [
 
 const PRICE_SEMANTICS_NOTE = "askingPriceBRL = minimum bid (lance mínimo).";
 
-/** Stages that may be reset to new_lead on re-harvest so the goal filter can re-run. */
+/** Stages that may be unconditionally reset to new_lead on re-harvest so the goal filter can re-run. */
 const RESETTABLE_STAGES = new Set<PipelineStage>(["new_lead", "parked"]);
+/** expired resets too, but only when a re-harvest shows a future auctionDate — see writeLead(). */
 
 export interface WriteLeadInput {
   brand: string;
@@ -89,6 +91,8 @@ export interface WriteLeadInput {
   color?: string;
   notes?: string;
   editalUrl?: string;
+  /** When this source's auction happens. Undefined/unparseable → null, never guessed. */
+  auctionDate?: Date | null;
   /** Bypass damage/sinistro gate (owner override only). */
   forceDamaged?: boolean;
 }
@@ -309,12 +313,21 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
   };
 
   const editalUrl = input.editalUrl?.trim() || null;
+  const auctionDate = input.auctionDate === undefined ? null : input.auctionDate;
 
   const existingByUrl = await prisma.car.findUnique({ where: { sourceUrl } });
 
   if (existingByUrl) {
     const stage = existingByUrl.pipelineStage as PipelineStage;
-    const canResetStage = RESETTABLE_STAGES.has(stage);
+    let canResetStage = RESETTABLE_STAGES.has(stage);
+    if (!canResetStage && stage === "expired") {
+      const otherSources = await prisma.carSource.findMany({
+        where: { carId: existingByUrl.id, NOT: { sourceUrl } },
+        select: { auctionDate: true },
+      });
+      canResetStage =
+        getNextAuctionDate([...otherSources, { auctionDate }]) !== null;
+    }
 
     const nextPlate = plateProvided ? plate! : existingByUrl.plate;
     const nextChassis = chassisProvided ? chassis! : existingByUrl.chassis;
@@ -347,6 +360,7 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       sourceUrl,
       sourcePlatform,
       editalUrl,
+      auctionDate,
     });
 
     if (editalUrl) {
@@ -419,6 +433,7 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       sourceUrl,
       sourcePlatform,
       editalUrl,
+      auctionDate,
     });
 
     if (editalUrl) {
@@ -473,6 +488,7 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     sourceUrl,
     sourcePlatform,
     editalUrl,
+    auctionDate,
   });
 
   if (editalUrl) {
@@ -533,6 +549,7 @@ async function upsertCarSource(
     sourceUrl: string;
     sourcePlatform: string;
     editalUrl: string | null;
+    auctionDate: Date | null;
   },
 ): Promise<void> {
   const now = new Date();
@@ -543,11 +560,13 @@ async function upsertCarSource(
       sourceUrl: args.sourceUrl,
       sourcePlatform: args.sourcePlatform,
       editalUrl: args.editalUrl,
+      auctionDate: args.auctionDate,
       lastSeenAt: now,
     },
     update: {
       lastSeenAt: now,
       sourcePlatform: args.sourcePlatform,
+      auctionDate: args.auctionDate,
       ...(args.editalUrl ? { editalUrl: args.editalUrl } : {}),
     },
   });
@@ -601,6 +620,14 @@ function parseArgs(argv: string[]): WriteLeadInput {
   else if (mileageRaw === "null" || mileageRaw === "") mileageKm = null;
   else mileageKm = Number(mileageRaw);
 
+  const auctionDateRaw = get("--auction-date");
+  let auctionDate: Date | null | undefined;
+  if (auctionDateRaw === undefined) auctionDate = undefined;
+  else {
+    const parsed = new Date(auctionDateRaw);
+    auctionDate = Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
   return {
     brand,
     model,
@@ -618,6 +645,7 @@ function parseArgs(argv: string[]): WriteLeadInput {
     state: get("--state"),
     notes: get("--notes"),
     editalUrl: get("--edital-url"),
+    auctionDate,
     forceDamaged: argv.includes("--force-damaged"),
   };
 }

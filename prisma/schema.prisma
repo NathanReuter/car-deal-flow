@@ -59,6 +59,7 @@ model CarSource {
   sourceUrl      String   @unique
   sourcePlatform String
   editalUrl      String?
+  auctionDate    DateTime? // when this leiloeira's auction happens; null = not confidently extracted
   firstSeenAt    DateTime @default(now())
   lastSeenAt     DateTime
   @@index([carId])

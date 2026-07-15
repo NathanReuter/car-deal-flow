@@ -10,6 +10,7 @@ export type PipelineStage =
   | "approved"
   | "parked"
   | "rejected"
+  | "expired"
   | "bought";
 
 export const PIPELINE_STAGES: { id: PipelineStage; label: string }[] = [
@@ -21,6 +22,7 @@ export const PIPELINE_STAGES: { id: PipelineStage; label: string }[] = [
   { id: "approved", label: "Approved" },
   { id: "parked", label: "Parked" },
   { id: "rejected", label: "Rejected" },
+  { id: "expired", label: "Expired" },
   { id: "bought", label: "Bought" },
 ];
 

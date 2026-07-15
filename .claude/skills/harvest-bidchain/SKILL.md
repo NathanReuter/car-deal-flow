@@ -31,7 +31,9 @@ npx tsx scripts/ingestion/bidchain-fetch.ts "<lotUrl>" --out /tmp/bid-lot.html
 ```
 
 3. Read the HTML. Extract only confident fields. Fail closed on ambiguous
-   `bodyType`. Prefer lance mínimo / oferta inicial for `--price`.
+   `bodyType`. Prefer lance mínimo / oferta inicial for `--price`. Also
+   extract the auction date/time if stated; leave it off when not clearly
+   present — never guess.
 4. Write:
 
 ```bash
@@ -49,6 +51,7 @@ npx tsx scripts/ingestion/write-lead.ts \
   [--chassis "<chassis>"] \
   [--city "<city>"] \
   [--state "<UF>"] \
+  [--auction-date "<ISO-8601 date/time>"] \
   [--notes "<comitente / procedência>"]
 ```
 
@@ -56,9 +59,16 @@ npx tsx scripts/ingestion/write-lead.ts \
 
 ```bash
 npx tsx scripts/ingestion/apply-goal-filter.ts --min-goal-fit 50
+npx tsx scripts/ingestion/expire-stale-leads.ts
 ```
 
-6. Report: found / written / merged / skipped (with reasons) / parked / rejected.
+`expire-stale-leads.ts` soft-deletes `new_lead`/`parked` cars whose known
+auction date(s) have all passed (moved to `expired`, hidden from default
+views but still queryable). A car with any unknown auction date is left
+alone — it never guesses that a listing is over.
+
+6. Report: found / written / merged / skipped (with reasons) / parked /
+   rejected / expired.
 
 ## Goal-aware harvest
 

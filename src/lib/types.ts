@@ -26,6 +26,9 @@ export const PIPELINE_STAGES: { id: PipelineStage; label: string }[] = [
   { id: "bought", label: "Bought" },
 ];
 
+/** Stages shown as kanban columns — expired is soft-deleted, so it gets no column. */
+export const KANBAN_STAGES = PIPELINE_STAGES.filter((s) => s.id !== "expired");
+
 /** Stages treated as the active working set (shortlist / default priority). */
 export const ACTIVE_PIPELINE_STAGES: PipelineStage[] = [
   "new_lead",

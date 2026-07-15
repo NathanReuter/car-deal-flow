@@ -44,31 +44,27 @@ When listing year/price/brand clearly miss that goal, **skip and log** — do no
 invent fields to force a fit. Soft triage still runs via `apply-goal-filter`
 after writes. Safety ceiling: **1000 writes/source/run**.
 
-### VIP Leilões authenticated fetch
+## VIP Financeiras (deterministic — preferred)
 
-Event listing pages (e.g. an event ID like `140726bspa`) are reachable, but
-individual lot detail is client-rendered and Cloudflare-gated — a plain
-headless browser gets blocked. Use the saved-session fetch flow instead of
-browsing VIP Leilões directly:
+Requires saved session at `.claude/browser-profile/vip-leiloes-state.json` (human runs `vip-leiloes-login.ts` once).
 
-1. **One-time setup (human-only, cannot be automated by the agent):** the
-   owner runs `npx tsx scripts/ingestion/vip-leiloes-login.ts` in their own
-   terminal. It opens a real visible browser window; they log in with their
-   own free VIP Leilões account. The script never sees the password, only
-   the resulting session, saved to
-   `.claude/browser-profile/vip-leiloes-state.json` (gitignored).
-2. **Per-URL fetch (agent-driven, this is the step you run):**
-   ```bash
-   npx tsx scripts/ingestion/vip-leiloes-fetch.ts "<url>" --out /tmp/vip-lot.html
-   ```
-   Then read `/tmp/vip-lot.html` to extract the lot's fields. This script
-   does no interpretation — it's the deterministic I/O boundary; all
-   judgment about what the HTML means happens after you read the file.
-3. **If it fails with "session has expired" or "no saved session":** stop
-   and tell the owner to re-run `vip-leiloes-login.ts` — do not attempt to
-   log in yourself, and do not ask the owner for their password.
+```bash
+./node_modules/.bin/tsx scripts/ingestion/harvest.ts --source vip
+# Optional: exclude insurer comitentes (Mapfre, Porto, etc.)
+./node_modules/.bin/tsx scripts/ingestion/harvest.ts --source vip --exclude-insurer
+```
 
-## Confidence rules
+Read `/tmp/vip-financeiras-write-summary.json`. Do **not** read lot HTML unless debugging.
+
+Manual pipeline:
+
+```bash
+./node_modules/.bin/tsx scripts/ingestion/vip-list-financeiras.ts --out /tmp/vip-financeiras-lots.json
+./node_modules/.bin/tsx scripts/ingestion/vip-fetch-batch.ts --lots /tmp/vip-financeiras-lots.json --out /tmp/vip-financeiras-details.json --skip-existing
+./node_modules/.bin/tsx scripts/ingestion/vip-harvest.ts --details /tmp/vip-financeiras-details.json [--exclude-insurer]
+```
+
+## Procedure (legacy per-lot — avoid)
 
 | Situation | Behavior |
 |---|---|

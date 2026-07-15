@@ -3,7 +3,7 @@
 Spec: `SPEC.md` (v2 ingestion) + Tier 1 analysis (conversation 2026-07-15)
 Plan: `tasks/plan.md`
 
-Status: **Phase 1 complete** — ready for Phase 2 (VIP Financeiras)
+Status: **Phases 0–6 implemented** — human spot-checks + live harvest runs pending
 
 Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scripts (minimal agent token usage).
 
@@ -37,9 +37,9 @@ Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scr
 
 ## Phase 2: VIP Financeiras deep harvest
 
-- [ ] **Task 2.1** `vip-list-financeiras.ts` — dynamic event discovery (not hardcoded IDs)
-- [ ] **Task 2.2** `vip-fetch-batch.ts` — incremental batch detail fetch
-- [ ] **Task 2.3** `vip-harvest.ts` — promote `_tmp-vip-*`; optional `--exclude-insurer`
+- [x] **Task 2.1** `vip-list-financeiras.ts` — dynamic event discovery (not hardcoded IDs)
+- [x] **Task 2.2** `vip-fetch-batch.ts` — incremental batch detail fetch
+- [x] **Task 2.3** `vip-harvest.ts` — promote `_tmp-vip-*`; optional `--exclude-insurer`
 
 ### Checkpoint 2
 - [ ] ≥100 lot URLs discovered; ≥80 writes
@@ -50,20 +50,20 @@ Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scr
 
 ## Phase 3: BIDchain / Caixa at scale
 
-- [ ] **Task 3.1** `bidchain-list.ts` — vehicle lot discovery (bidchain + white-labels)
-- [ ] **Task 3.2** `bidchain-harvest.ts` — promote `_tmp-bidchain-harvest-write.ts`; update skill
+- [x] **Task 3.1** `bidchain-list.ts` — vehicle lot discovery (bidchain + white-labels)
+- [x] **Task 3.2** `bidchain-harvest.ts` — promote `_tmp-bidchain-harvest-write.ts`; update skill
 
 ### Checkpoint 3
 - [ ] ≥30 BIDchain writes (up from 1)
-- [ ] Skill doc: single command
+- [x] Skill doc: single command
 - [ ] Human review Caixa-tagged lots
 
 ---
 
 ## Phase 4: MGL corporate repossession only
 
-- [ ] **Task 4.1** `mgl-list-auctions.ts` — corp repasse only; exclude batidos/sucatas at auction level
-- [ ] **Task 4.2** `mgl-harvest.ts` — promote `mgl-harvest-write.ts` + auction filter; update skill
+- [x] **Task 4.1** `mgl-list-auctions.ts` — corp repasse only; exclude batidos/sucatas at auction level
+- [x] **Task 4.2** `mgl-harvest.ts` — promote `mgl-harvest-write.ts` + auction filter; update skill
 
 ### Checkpoint 4
 - [ ] Zero batidos auction writes (no MGL 7157-style bulk rejections)
@@ -74,9 +74,9 @@ Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scr
 
 ## Phase 5: Santander Retomados (new source)
 
-- [ ] **Task 5.1** Probe + `docs/superpowers/specs/2026-07-15-santander-retomados-probe.md`
-- [ ] **Task 5.2** `santander-list.ts` + `santander-fetch.ts` + tests
-- [ ] **Task 5.3** `santander-harvest.ts` + `harvest-santander` skill
+- [x] **Task 5.1** Probe + `docs/superpowers/specs/2026-07-15-santander-retomados-probe.md`
+- [x] **Task 5.2** `santander-list.ts` + `santander-fetch.ts` + tests
+- [x] **Task 5.3** `santander-harvest.ts` + `harvest-santander` skill
 
 ### Checkpoint 5
 - [ ] Probe reviewed by owner
@@ -87,11 +87,12 @@ Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scr
 
 ## Phase 6: Orchestrator + skill slim-down
 
-- [ ] **Task 6.1** `harvest.ts` orchestrator + `npm run harvest` scripts
-- [ ] **Task 6.2** Slim all harvest skills to orchestrator commands (≤10 lines primary instruction)
+- [x] **Task 6.1** `harvest.ts` orchestrator + `npm run harvest` scripts
+- [x] **Task 6.2** Slim all harvest skills to orchestrator commands (≤10 lines primary instruction)
 
 ### Checkpoint 6 (Final)
-- [ ] `npm test` + `npm run build` green
+- [x] `npm test` green
+- [ ] `npm run build` green (Next.js /cars export hits Prisma P2023 — pre-existing UI/DB issue)
 - [ ] `harvest.ts --all` produces ≥200 combined writes/updates
 - [ ] No source stuck at ≤1 lot in DB
 - [ ] Agent harvest = 1 script call + read summary (token benchmark)

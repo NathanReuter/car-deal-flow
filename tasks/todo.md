@@ -1,123 +1,86 @@
-# Todo: Tier 1 Coverage — Deterministic Full-Catalog Harvest
+# Todo: Pre-Repossession (Repasse) Lead Ingestion — Slice 1
 
-Spec: `SPEC.md` (v2 ingestion) + Tier 1 analysis (conversation 2026-07-15)
+Spec: `docs/superpowers/specs/2026-07-17-pre-repossession-repasse-ingestion-design.md`
 Plan: `tasks/plan.md`
+Prior (Tier 1, implemented, human checks pending): `tasks/plan-tier1.md` / `tasks/todo-tier1.md`
 
-Status: **Phases 0–6 implemented** — human spot-checks + live harvest runs pending
-
-Goal: Scale from ~188 sample cars to full-catalog harvests via deterministic scripts (minimal agent token usage).
+Status: **Not started — plan awaiting owner review**
 
 ---
 
-## Phase 0: Shared harvest infrastructure
+## Phase 0: Data model + shared repasse libs
 
-- [x] **Task 0.1** `scripts/ingestion/lib/parse-common.ts` — BRL, km, year, brand, bodyType + tests
-- [x] **Task 0.2** `scripts/ingestion/lib/listing-filters.ts` — batidos, insurer, sinistrado filters + tests
-- [x] **Task 0.3** `scripts/ingestion/lib/harvest-runner.ts` — ceiling, spawnWriteLead, summary JSON + tests
+- [ ] **Task 0.1** Schema + types: `dealPhase`, repasse columns, `sellerType "repasse"`, aggregate mapping, migration + backfill
+- [ ] **Task 0.2** `write-lead.ts`: repasse input fields, pricing rule, cross-phase "window closed" merge note
+- [ ] **Task 0.3** `lib/repasse-economics.ts`: entrada/saldo/parcela/contact extraction, null-on-ambiguity + tests
+- [ ] **Task 0.4** `lib/repasse-urgency.ts`: high/medium/low heuristic + tests
 
 ### Checkpoint 0
-- [x] `npx vitest run scripts/ingestion/__tests__/` passes
-- [x] `npm test` + `npm run build` pass
-- [ ] Human review before source harvests
+- [ ] `npm test` + `npx tsc --noEmit` green; migration applied
+- [ ] Human review of pricing rule behavior
 
 ---
 
-## Phase 1: Bradesco full catalog
+## Phase 1: Repasso + Repasses
 
-- [x] **Task 1.1** `bradesco-list.ts` — paginated JSON discovery, skip Sinistrado at list level
-- [x] **Task 1.2** `bradesco-fetch.ts` — batch detail fetch with `--skip-existing`
-- [x] **Task 1.3** `bradesco-harvest.ts` — promote writer; update skill
+- [ ] **Task 1.1** Repasso probe doc + fixtures
+- [ ] **Task 1.2** `repasso-harvest.ts` end-to-end + fixture tests
+- [ ] **Task 1.3** Repasses wp-json probe + `repasses-harvest.ts` + tests
 
 ### Checkpoint 1
-- [x] End-to-end: list → fetch → harvest without agent reading HTML
-- [x] List/fetch/harvest CLIs + fixture tests green
-- [ ] Human spot-check T-Cross / SUV rows for damage
+- [ ] Real `pre_repossession` leads in DB, correct pricing/notes
+- [ ] Human reviews ~10 sample rows
 
 ---
 
-## Phase 2: VIP Financeiras deep harvest
+## Phase 2: OLX
 
-- [x] **Task 2.1** `vip-list-financeiras.ts` — dynamic event discovery (not hardcoded IDs)
-- [x] **Task 2.2** `vip-fetch-batch.ts` — incremental batch detail fetch
-- [x] **Task 2.3** `vip-harvest.ts` — promote `_tmp-vip-*`; optional `--exclude-insurer`
+- [ ] **Task 2.1** OLX probe: access/anti-bot verdict, fixtures (stop-and-report if hard-blocked)
+- [ ] **Task 2.2** `olx-list.ts` + `olx-fetch.ts` (resumable, capped)
+- [ ] **Task 2.3** `olx-parse.ts` + `olx-harvest.ts` (no-signal skip tally)
 
 ### Checkpoint 2
-- [ ] ≥100 lot URLs discovered; ≥80 writes
-- [ ] `--exclude-insurer` keeps Mapfre-style collision lots out of `new_lead`
-- [ ] Human review sample rows
+- [ ] Live capped run writes real OLX leads; sane skip tallies
+- [ ] Human review + LGPD spot-check (contact only in `sellerContact`)
 
 ---
 
-## Phase 3: BIDchain / Caixa at scale
+## Phase 3: Orchestrator + skill
 
-- [x] **Task 3.1** `bidchain-list.ts` — vehicle lot discovery (bidchain + white-labels)
-- [x] **Task 3.2** `bidchain-harvest.ts` — promote `_tmp-bidchain-harvest-write.ts`; update skill
+- [ ] **Task 3.1** `harvest.ts`: olx/repasso/repasses sources + `--phase pre|auction|all`; npm scripts; link-check covers phase 1
+- [ ] **Task 3.2** `harvest-repasse` skill doc (thin)
 
 ### Checkpoint 3
-- [ ] ≥30 BIDchain writes (up from 1)
-- [x] Skill doc: single command
-- [ ] Human review Caixa-tagged lots
+- [ ] One command runs phase-1 end-to-end; `npm test` green
 
 ---
 
-## Phase 4: MGL corporate repossession only
+## Phase 4: Verification gate
 
-- [x] **Task 4.1** `mgl-list-auctions.ts` — corp repasse only; exclude batidos/sucatas at auction level
-- [x] **Task 4.2** `mgl-harvest.ts` — promote `mgl-harvest-write.ts` + auction filter; update skill
+- [ ] **Task 4.1** `list-targets.ts --phase pre` + outcome mapping (qualified → researching; no gravame → warning; RENAJUD → urgency high)
+- [ ] **Task 4.2** `sync-risk-checks` skill doc update
 
 ### Checkpoint 4
-- [ ] Zero batidos auction writes (no MGL 7157-style bulk rejections)
-- [ ] ≥30 corp repasse writes
-- [ ] Human review sample rows
+- [ ] One real lead verified through the browser flow; owner review
 
 ---
 
-## Phase 5: Santander Retomados (new source)
+## Phase 5: UI
 
-- [x] **Task 5.1** Probe + `docs/superpowers/specs/2026-07-15-santander-retomados-probe.md`
-- [x] **Task 5.2** `santander-list.ts` + `santander-fetch.ts` + tests
-- [x] **Task 5.3** `santander-harvest.ts` + `harvest-santander` skill
+- [ ] **Task 5.1** Table: phase + urgency badges, phase filter
+- [ ] **Task 5.2** Detail: repasse economics block ("não informado" for nulls)
 
-### Checkpoint 5
-- [ ] Probe reviewed by owner
-- [ ] ≥10 Santander writes in first full run
-- [ ] Human review vs insurer-lot quality
-
----
-
-## Phase 6: Orchestrator + skill slim-down
-
-- [x] **Task 6.1** `harvest.ts` orchestrator + `npm run harvest` scripts
-- [x] **Task 6.2** Slim all harvest skills to orchestrator commands (≤10 lines primary instruction)
-
-### Checkpoint 6 (Final)
-- [x] `npm test` green
-- [ ] `npm run build` green (Next.js /cars export hits Prisma P2023 — pre-existing UI/DB issue)
-- [ ] `harvest.ts --all` produces ≥200 combined writes/updates
-- [ ] No source stuck at ≤1 lot in DB
-- [ ] Agent harvest = 1 script call + read summary (token benchmark)
-- [ ] Owner sign-off
-
----
-
-## Success Metrics
-
-| Source | Current | Target |
-|--------|---------|--------|
-| Total | 188 | ≥400 |
-| BIDchain | 1 | ≥30 |
-| VIP | 34 | ≥80 |
-| Bradesco | 100 | ≥150 |
-| MGL | 52 | ≥40 corp-only, 0 batidos rejects |
-| Santander | 0 | ≥10 |
+### Checkpoint 5 (Final)
+- [ ] `npm test` + `npx tsc --noEmit` green
+- [ ] `--phase pre` run: ≥20 phase-1 leads written
+- [ ] ≥1 lead verified to `researching`
+- [ ] LGPD spot-check clean; owner sign-off
 
 ---
 
 ## Notes
 
-- Promote `_tmp-*` scripts to production; archive/delete tmp after each phase
-- `--exclude-insurer` optional flag for bank-repossession focus (Mapfre lesson)
-- Safety ceiling: 1000 writes/source/run
-- Out of scope: cron scheduling, Tier 2 watchlist polling, Leilões PB expansion
-- Prior completed work: multi-source v2 (`tasks/todo.md` git history)
-- Parallel plan exists: auction date + expiry (not blocked by Tier 1)
+- Pricing rule: entrada+saldo when both known; saldo unknown → flag note + needs-research; entrada unknown → reject.
+- Never bypass anti-bot; OLX hard-block → stop and report.
+- Manual one-shot runs only; no cron.
+- Out of scope: Instagram/Apify, paid plate APIs, Webmotors, Motorez/RepassaMais, scheduling, lost-to-auction analytics.

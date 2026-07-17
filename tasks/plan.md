@@ -1,257 +1,219 @@
-# Implementation Plan: Multi-source auction ingestion (v2)
+# Implementation Plan: Pre-Repossession (Repasse) Lead Ingestion — Slice 1
 
-## Overview
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-Extend Car Deal Flow’s harvest pipeline beyond Bradesco + VIP: add **BIDchain**
-(Caixa channel / white-label lots), **Leilões PB**, and **MGL**, with
-**cross-source dedup** via a `CarSource` table (first source wins primary link).
-No in-app bidding. Spec: `SPEC.md` (decisions locked 2026-07-14).
+**Spec:** `docs/superpowers/specs/2026-07-17-pre-repossession-repasse-ingestion-design.md`
+**Prior plan:** Tier 1 full-catalog harvest — archived at `tasks/plan-tier1.md` / `tasks/todo-tier1.md` (implemented; human spot-checks still pending there).
 
-v1 plan (`tasks/plan.md` history / completed T1–T6) remains valid background;
-this document replaces the active plan going forward.
+**Goal:** Add a phase-1 (pre-repossession) acquisition stage: harvest repasse / "assumo financiamento" ads from OLX, Repasso.com.br, and Repasses.com.br; verify financing via the existing risk-check agent; flag urgency; surface leads in the existing pipeline alongside auction lots.
 
-## Architecture decisions
+**Architecture:** Mirror the auction-harvest pattern. Each source is a vertical slice under `scripts/ingestion/` (list → fetch → parse → `write-lead.ts` → `apply-goal-filter.ts`), reusing dedup (`identity.ts`), the damage gate, fixture tests, and the `harvest.ts` orchestrator (new `--phase` selector). Verification extends `scripts/risk-checks/` + the `sync-risk-checks` skill. Data model gains `dealPhase` + flat repasse columns on `Car`.
 
-- **`CarSource` table** — not JSON; global unique `sourceUrl`; cascade on car delete.
-- **First-wins primary** — `Car.sourceUrl` / `sourcePlatform` never overwritten by merge.
-- **Dedup keys** — chassis (strongest) → normalized plate → same `sourceUrl` update; never brand+model+year alone.
-- **Per-source skills** — `harvest-bidchain`, `harvest-leiloes-pb`, `harvest-mgl`; v1 skill stays for Bradesco/VIP.
-- **BIDchain** — public HTML (no login session); follow white-label hosts (`adrileiloes.com.br`, etc.); tag `sellerType` from comitente.
-- **Trust boundary** — all writes through `write-lead.ts`; fetch scripts are I/O only.
-- **Volume** — prefer goal-aware skip when cheap; **safety ceiling 1000 writes/source/run**.
+## Global Constraints (carried over from Tier 1, all still binding)
 
-## Dependency graph
+- Fail closed: never guess brand, model, year, price, body type. Ambiguous repasse economics → `null`.
+- Damage gate (colisão/sinistro/monta/sucata/batido) unchanged, applies to repasse ads too.
+- Safety ceiling: 1000 writes per source per run.
+- Public unauthenticated pages only; never bypass logins/CAPTCHA/anti-bot. If OLX blocks hard, stop and report — do not escalate evasion.
+- LGPD minimization: one seller contact handle max, stored only in the dedicated column; no CPF; contact never copied into notes.
+- `--out` paths under `/tmp` or `<cwd>/tmp` (`fetch-guards.ts`).
+- Manual one-shot runs only; no cron.
+- `npm test` and `npx tsc --noEmit` green after each phase (`npm run build` has a pre-existing P2023 issue — see todo-tier1 Checkpoint 6).
+- Ask owner before new npm dependencies.
 
-```
-CarSource migration + backfill
-    │
-    ├── write-lead: upsert CarSource on create/update
-    │       │
-    │       ├── write-lead: merge by chassis/plate (first-wins)
-    │       │       │
-    │       │       └── tests (create / update / merge / no weak merge)
-    │       │
-    │       └── aggregate + types + car detail UI (multi-source links)
-    │
-    ├── bidchain-fetch.ts + harvest-bidchain skill (+ fixture parse)
-    ├── leiloes-pb fetch/skill (after public-access probe)
-    └── mgl fetch/skill (after public-access probe)
-            │
-            └── apply-goal-filter (unchanged semantics) + live harvest checkpoint
-```
+## Pricing rule (repeated because it is the easiest thing to get wrong)
 
-## Task list
-
-### Phase 1 — Dedup foundation
-
-#### Task 1: `CarSource` schema + backfill
-
-**Description:** Add `CarSource` model and migration. Backfill one `CarSource` row
-per existing `Car` from primary `sourceUrl`/`sourcePlatform`. Wire Prisma relation
-on `Car`.
-
-**Acceptance criteria:**
-- [ ] `CarSource` matches SPEC (unique `sourceUrl`, `carId` index, cascade delete)
-- [ ] Existing cars each have exactly one `CarSource` after migrate/backfill
-- [ ] App still loads (`npm run build`)
-
-**Verification:**
-- [ ] `npx prisma migrate dev` applies cleanly
-- [ ] `npm run build`
-- [ ] Spot-check: `SELECT COUNT(*) FROM Car` equals `SELECT COUNT(*) FROM CarSource` post-backfill
-
-**Dependencies:** None  
-**Files likely touched:** `prisma/schema.prisma`, `prisma/migrations/*`, small backfill script or migration SQL  
-**Estimated scope:** S
-
-#### Task 2: `write-lead` always records `CarSource` + merge by identity
-
-**Description:** Extend `writeLead` so every create/update upserts a `CarSource`
-row. On new URL: if chassis or normalized plate matches an existing car, **merge**
-(append source, fill null scalars, note disagreements) without changing primary
-`sourceUrl`/`sourcePlatform` or non-resettable stages.
-
-**Acceptance criteria:**
-- [ ] Same `sourceUrl` → update car + bump `CarSource.lastSeenAt` (existing behavior + source row)
-- [ ] New URL + matching chassis → merge into existing car; primary unchanged
-- [ ] New URL + matching normalized plate (no chassis conflict) → merge
-- [ ] New URL + no identity match → create car; primary = this source
-- [ ] No merge on brand+model+year alone
-- [ ] Result JSON indicates `created` | `updated` | `merged`
-
-**Verification:**
-- [ ] `npm test` — extend `scripts/ingestion/__tests__/write-lead.test.ts`
-- [ ] Manual: two write-lead calls same chassis different URLs → one `Car`, two `CarSource`
-
-**Dependencies:** Task 1  
-**Files likely touched:** `scripts/ingestion/write-lead.ts`, `scripts/ingestion/__tests__/write-lead.test.ts`, optional `scripts/ingestion/identity.ts` for normalize helpers  
-**Estimated scope:** M
-
-#### Task 3: Show all sources in car detail UI
-
-**Description:** Load `sources` with the car; keep primary link as today; list
-additional `CarSource` links (platform + external URL).
-
-**Acceptance criteria:**
-- [ ] Detail page shows every source URL for the car
-- [ ] Primary remains `car.sourceUrl` / `car.sourcePlatform` (first-wins)
-- [ ] Cars with a single source look unchanged aside from using the same component path
-
-**Verification:**
-- [ ] `npm run build`
-- [ ] Manual: open a merged car (or seed two sources) and confirm both links
-
-**Dependencies:** Task 1 (Task 2 preferred for real merge data)  
-**Files likely touched:** `src/lib/types.ts`, `src/lib/aggregate.ts`, `src/components/cars/car-detail-tabs.tsx`, any page loader that fetches the car  
-**Estimated scope:** S–M
-
-### Checkpoint A — After Tasks 1–3
-
-- [ ] `npm test` and `npm run build` green
-- [ ] Dedup merge demo works via CLI
-- [ ] UI shows multi-source links
-- [ ] **Human review** before source harvests
+For `dealPhase = "pre_repossession"`:
+- Both entrada and saldo known → `askingPriceBRL = entryAskBRL + outstandingDebtBRL`; note stamps the breakdown.
+- Saldo unknown → `askingPriceBRL = entryAskBRL`, mandatory note "saldo devedor não informado"; goal filter must treat as needs-research (park, never auto-promote as bargain).
+- Entrada unknown → lead is skipped (no anchor price at all fails the fail-closed rule).
 
 ---
 
-### Phase 2 — Source harvests (vertical slices)
+## Task List
 
-#### Task 4: BIDchain harvest path
+### Phase 0: Data model + shared repasse libs (foundation)
 
-**Description:** Add public `bidchain-fetch.ts` (Playwright, `domcontentloaded`, no
-session). Add `.claude/skills/harvest-bidchain/SKILL.md` documenting list → detail
-→ `write-lead` → `apply-goal-filter`, white-label hosts, `sellerType` rules, 1000
-write ceiling. Add a sanitized HTML fixture + parser test or documented extraction
-checklist in the skill if parsing stays agent-side.
+- [ ] **Task 0.1: Schema + domain types for deal phase and repasse economics**
+  - **Description:** Add to `prisma/schema.prisma` `Car`: `dealPhase String @default("auction")`, `entryAskBRL Int?`, `outstandingDebtBRL Int?`, `installmentBRL Int?`, `installmentsRemaining Int?`, `sellerContact String?`, `repasseUrgency String?`. Migrate SQLite (existing rows get `"auction"` via default). Update `src/lib/types.ts`: `DealPhase` type, `sellerType "repasse"` + label, optional `repasse` block on `Car` (nested object in domain, flat columns in DB), and mapping in `src/lib/aggregate.ts`.
+  - **Acceptance criteria:**
+    - [ ] Migration applies cleanly to the existing DB; all existing cars read back with `dealPhase === "auction"`.
+    - [ ] `sources.test.ts` / existing type consumers compile; new `SELLER_TYPE_LABEL.repasse` present.
+  - **Verification:** `npx prisma migrate dev` ok; `npm test`; `npx tsc --noEmit`.
+  - **Dependencies:** None. **Files:** `prisma/schema.prisma`, migration, `src/lib/types.ts`, `src/lib/aggregate.ts`. **Scope:** M.
 
-**Acceptance criteria:**
-- [ ] Fetch script writes HTML for a public lot URL without login
-- [ ] Skill procedure is runnable by an agent end-to-end
-- [ ] Confidence rules match v1 (fail closed on body/price/URL)
-- [ ] Safety ceiling documented (1000 writes/run)
+- [ ] **Task 0.2: `write-lead.ts` repasse support**
+  - **Description:** Extend `WriteLeadInput` with `dealPhase?`, `entryAskBRL?`, `outstandingDebtBRL?`, `installmentBRL?`, `installmentsRemaining?`, `sellerContact?`. Add `"repasse"` to `VALID_SELLER_TYPES`. Enforce the pricing rule above (compute/validate `askingPriceBRL`, stamp breakdown or "saldo devedor não informado" note; phase-2 leads keep the lance-mínimo note). Persist new columns; merge behavior: cross-phase merge keeps the car, appends source, and stamps a "window closed — reappeared at auction" note when an existing pre_repossession car is re-written by an auction source.
+  - **Acceptance criteria:**
+    - [ ] Repasse lead with entrada+saldo writes with summed price and breakdown note.
+    - [ ] Saldo-unknown lead writes with flag note; entrada-unknown lead is rejected with `WriteLeadError`.
+    - [ ] Auction re-harvest of an existing repasse car merges (no duplicate) and stamps window-closed note.
+  - **Verification:** new cases in `write-lead` tests; `npm test`.
+  - **Dependencies:** 0.1. **Files:** `scripts/ingestion/write-lead.ts`, its tests. **Scope:** M.
 
-**Verification:**
-- [ ] `npx tsx scripts/ingestion/bidchain-fetch.ts "<lotUrl>" --out /tmp/bid.html` succeeds
-- [ ] Dry-run: write ≥1 confident lot via `write-lead` with `--source-platform "BIDchain"`
-- [ ] `npm test` still green
+- [ ] **Task 0.3: `lib/repasse-economics.ts` — conservative ad-text extraction**
+  - **Description:** Pure functions extracting `entryAskBRL`, `outstandingDebtBRL`, `installmentBRL`, `installmentsRemaining`, and contact handle from Portuguese ad text ("entrada de R$ 15.000", "saldo devedor 42 mil", "48x de R$ 1.250", "restam 30 parcelas", phone/WhatsApp patterns). Ambiguity (two candidate values, ranges, "consulte") → `null`. Reuses `parse-common.ts` BRL parsing.
+  - **Acceptance criteria:**
+    - [ ] Table-driven tests cover the common phrasings plus ≥5 ambiguous cases asserting `null`.
+    - [ ] Never throws on arbitrary text.
+  - **Verification:** `npx vitest run scripts/ingestion/__tests__/repasse-economics.test.ts`.
+  - **Dependencies:** None. **Files:** `scripts/ingestion/lib/repasse-economics.ts`, test. **Scope:** S.
 
-**Dependencies:** Checkpoint A (Tasks 1–2 minimum)  
-**Files likely touched:** `scripts/ingestion/bidchain-fetch.ts`, `.claude/skills/harvest-bidchain/SKILL.md`, optional fixture under `scripts/ingestion/__tests__/fixtures/`  
-**Estimated scope:** M
+- [ ] **Task 0.4: `lib/repasse-urgency.ts` — heuristic urgency flag**
+  - **Description:** Pure function `computeRepasseUrgency(input) → "high" | "medium" | "low"` from: restriction check results (judicial/RENAJUD found → high), ad-text markers ("urgente", "entrega amigável", "banco vai tomar", parcelas atrasadas), FIPE discount depth (when available), ad age. No day-countdowns.
+  - **Acceptance criteria:**
+    - [ ] Restriction signal alone forces `high`; plain ad with no signals → `low`.
+    - [ ] Deterministic, documented signal weights in one place.
+  - **Verification:** unit tests; `npm test`.
+  - **Dependencies:** None. **Files:** `scripts/ingestion/lib/repasse-urgency.ts`, test. **Scope:** S.
 
-#### Task 5: Leilões PB harvest path
-
-**Description:** Short public-access probe, then fetch helper (login only if probe
-proves necessary — ask owner before adding login flow). Per-source skill
-`harvest-leiloes-pb` with same confidence + ceiling rules.
-
-**Acceptance criteria:**
-- [ ] Probe result recorded in skill (public vs login)
-- [ ] Agent can harvest confident vehicle lots into DB as `Leilões PB`
-- [ ] Uses `write-lead` merge path (no duplicate cars when chassis/plate known)
-
-**Verification:**
-- [ ] Fetch at least one lot HTML successfully
-- [ ] ≥1 `write-lead` create/merge with platform `Leilões PB`
-- [ ] `npm test` green
-
-**Dependencies:** Checkpoint A  
-**Files likely touched:** `scripts/ingestion/leiloes-pb-*.ts`, `.claude/skills/harvest-leiloes-pb/SKILL.md`  
-**Estimated scope:** M
-
-#### Task 6: MGL harvest path
-
-**Description:** Same vertical slice as Task 5 for `mgl.com.br` /
-`harvest-mgl`.
-
-**Acceptance criteria:**
-- [ ] Probe result in skill
-- [ ] Confident lots land via `write-lead` as `MGL`
-- [ ] 1000 write ceiling documented
-
-**Verification:**
-- [ ] Fetch + ≥1 write-lead
-- [ ] `npm test` green
-
-**Dependencies:** Checkpoint A  
-**Files likely touched:** `scripts/ingestion/mgl-*.ts`, `.claude/skills/harvest-mgl/SKILL.md`  
-**Estimated scope:** M
-
-### Checkpoint B — After Tasks 4–6
-
-- [ ] Each new source has a skill + fetch path
-- [ ] At least one live write per source (or documented blocker)
-- [ ] Cross-source: same chassis from VIP + BIDchain → one car, two links
-- [ ] **Human review** of sample Pipeline rows
+### Checkpoint 0: Foundation
+- [ ] `npm test` + `npx tsc --noEmit` green; migration applied; no UI regressions on `/cars` dev render.
+- [ ] Human review of pricing-rule behavior before any source harvests.
 
 ---
 
-### Phase 3 — Polish + close
+### Phase 1: Repasso + Repasses (low-risk sources, prove the phase-1 path end-to-end)
 
-#### Task 7: Goal-aware harvest guidance + v1 skill cleanup
+- [ ] **Task 1.1: Repasso probe + spec note**
+  - **Description:** Fetch Repasso.com.br listing + one detail page (plain HTTP), save fixtures, record structure/selectors/volume in a short probe doc (pattern: `2026-07-15-santander-retomados-probe.md`). Confirm robots.txt still permits.
+  - **Acceptance criteria:** probe doc committed with listing URL scheme, pagination, detail selectors, observed ad count.
+  - **Verification:** fixtures saved under `scripts/ingestion/__tests__/fixtures/`.
+  - **Dependencies:** None. **Files:** probe doc, 2 fixtures. **Scope:** S.
 
-**Description:** Document in each v2 skill (and lightly in v1) how to prefer lots
-near active goal (year/budget/body) before writing, while keeping fail-closed
-extraction. Update v1 skill “Deferred” section to point at v2 skills. Optional:
-shared helper that reads active `BuyingGoal` and prints a filter hint (no silent
-drops of valid lots without logging).
+- [ ] **Task 1.2: `repasso-harvest.ts` (list + parse + write)**
+  - **Description:** Single CLI: paginate listings → fetch details (plain HTTP, `--skip-existing` cache dir under `/tmp/repasso-harvest/`) → parse (identity fields fail-closed, damage gate, `repasse-economics`) → `write-lead` with `dealPhase: "pre_repossession"`, `sellerType: "repasse"`, `sourcePlatform: "Repasso"` → summary JSON.
+  - **Acceptance criteria:**
+    - [ ] Fixture tests for listing + detail parse, including one economics-bearing ad and one damage-gated ad.
+    - [ ] `--dry-run` and `--limit` supported; ceiling enforced.
+  - **Verification:** fixture tests; live `--dry-run --limit 5` run shows sane parsed output.
+  - **Dependencies:** 0.1–0.3, 1.1. **Files:** `repasso-harvest.ts`, tests, fixtures. **Scope:** M.
 
-**Acceptance criteria:**
-- [ ] Skills say: filter by goal when cheap; never invent fields; ceiling 1000
-- [ ] v1 skill links to per-source v2 skills instead of “deferred” for these sources
+- [ ] **Task 1.3: Repasses.com.br wp-json probe + `repasses-harvest.ts`**
+  - **Description:** Probe `wp-json/wp/v2/` for a vehicle post type (fallback: HTML). Then same harvest shape as 1.2 with `sourcePlatform: "Repasses"`; JSON payload fixture test.
+  - **Acceptance criteria:**
+    - [ ] Probe outcome recorded (API vs HTML fallback) in the probe doc.
+    - [ ] Fixture test on real payload; `--dry-run`/`--limit`; ceiling.
+  - **Verification:** fixture tests; live `--dry-run --limit 5`.
+  - **Dependencies:** 0.1–0.3. **Files:** `repasses-harvest.ts`, tests, fixture, probe doc. **Scope:** M.
 
-**Verification:**
-- [ ] Skill markdown reviewed
-- [ ] `npm test` if helper code added
+### Checkpoint 1: Phase-1 path proven
+- [ ] Real repasse leads in DB with `dealPhase = "pre_repossession"`, correct pricing/notes.
+- [ ] `npm test` green; human reviews ~10 sample rows before OLX work.
 
-**Dependencies:** Tasks 4–6  
-**Files likely touched:** `.claude/skills/harvest-*/SKILL.md`, optional `scripts/ingestion/goal-hint.ts`  
-**Estimated scope:** S
+---
 
-#### Task 8: End-to-end verification harvest
+### Phase 2: OLX slice (highest volume, highest risk)
 
-**Description:** Run (or agent-run) BIDchain + one regional source, then
-`apply-goal-filter`, capture summary counts (written / merged / skipped / parked /
-rejected). Confirm no bidding code landed.
+- [ ] **Task 2.1: OLX probe — search access + anti-bot posture**
+  - **Description:** Playwright + stealth (existing stack) against OLX Autos search for "repasse" / "assumo financiamento" / "passo financiamento", constrained by active-goal price band + region. Determine: results markup (or embedded `__NEXT_DATA__` JSON), pagination, detail-page shape, block behavior. Save search + detail fixtures. **If OLX hard-blocks, stop and report options to owner — do not escalate evasion.**
+  - **Acceptance criteria:** probe doc with access verdict, selectors/JSON paths, expected volume per query.
+  - **Verification:** fixtures saved; probe doc committed.
+  - **Dependencies:** None (parallel with Phase 1). **Files:** probe doc, fixtures. **Scope:** S–M.
 
-**Acceptance criteria:**
-- [ ] Summary logged in `tasks/todo.md` or chat
-- [ ] Pipeline usable same day (`new_lead` / `parked` populated from new sources)
-- [ ] Grep confirms no bid-placement scripts
+- [ ] **Task 2.2: `olx-list.ts` + `olx-fetch.ts`**
+  - **Description:** `olx-list.ts`: run the query set, dedupe ad URLs across queries, `--out /tmp/olx-harvest/list.json`. `olx-fetch.ts`: batch detail fetch with `--skip-existing` into `/tmp/olx-harvest/details/`. Shared browser instance, polite pacing.
+  - **Acceptance criteria:**
+    - [ ] List output: url, title, price, city/UF, postedAt per ad; fixture test.
+    - [ ] Fetch resumable via `--skip-existing`; `--limit` honored.
+  - **Verification:** fixture tests; live run capped at `--limit 10`.
+  - **Dependencies:** 2.1. **Files:** `olx-list.ts`, `olx-fetch.ts`, tests. **Scope:** M.
 
-**Verification:**
-- [ ] `npm test && npm run build`
-- [ ] Manual Pipeline check
+- [ ] **Task 2.3: `olx-parse.ts` + `olx-harvest.ts`**
+  - **Description:** Parse detail fixtures → identity fields (fail closed), damage gate, `repasse-economics` on description, plate `null` expected. Harvest writer mirrors 1.2 (`sourcePlatform: "OLX"`). Non-repasse ads matched by the query but lacking any financing signal in text → skip + tally (`skipReason: "no_financing_signal"`).
+  - **Acceptance criteria:**
+    - [ ] Fixture tests: economics-bearing ad, damage ad (rejected), no-signal ad (skipped).
+    - [ ] Live `--dry-run --limit 10` produces ≥1 plausible qualified-shape lead.
+  - **Verification:** fixture tests; dry-run output human-scanned.
+  - **Dependencies:** 2.2, 0.2–0.3. **Files:** `olx-parse.ts`, `olx-harvest.ts`, tests, fixtures. **Scope:** M.
 
-**Dependencies:** Tasks 4–7  
-**Files likely touched:** `tasks/todo.md` (status only)  
-**Estimated scope:** S
+### Checkpoint 2: OLX live
+- [ ] Live capped run (`--limit 25`) writes real OLX repasse leads; skip tallies look sane (not 100% skips, not 0).
+- [ ] Human review of written rows + LGPD spot-check (contact only in `sellerContact`).
 
-### Checkpoint C — Complete
+---
 
-- [ ] SPEC success criteria met
-- [ ] `npm test` + `npm run build` green
-- [ ] Ready for owner sign-off
+### Phase 3: Orchestrator, npm scripts, skill doc
 
-## Parallelization
+- [ ] **Task 3.1: `harvest.ts` phase selector + new sources**
+  - **Description:** Add `"olx" | "repasso" | "repasses"` to `HarvestSource`; add `--phase pre|auction|all` (default `all`; `--source` implies its phase). Post-harvest cleanup: broken-link sweep applies to phase-1 leads too (dead ad = sold or pulled → expire). Update `package.json` scripts (`harvest:pre`, etc.).
+  - **Acceptance criteria:**
+    - [ ] `--phase pre` runs exactly olx+repasso+repasses; `--all` runs everything; summary JSON groups per source.
+    - [ ] Existing auction-only invocations unchanged.
+  - **Verification:** orchestrator unit tests for source selection; `npm test`.
+  - **Dependencies:** 1.2, 1.3, 2.3. **Files:** `harvest.ts`, `package.json`, tests. **Scope:** S–M.
 
-| Parallel-safe after Checkpoint A | Must stay sequential |
-|---|---|
-| Tasks 4, 5, 6 (different sources) | Task 1 → 2 → 3 |
-| Task 7 skill docs (after each source exists) | Task 8 last |
+- [ ] **Task 3.2: `harvest-repasse` skill doc**
+  - **Description:** Thin skill (≤10-line primary instruction, matching the slimmed Tier 1 skills) for running the phase-1 harvest and reading the summary.
+  - **Acceptance criteria:** skill invokes orchestrator, no HTML reading by the agent.
+  - **Verification:** doc review.
+  - **Dependencies:** 3.1. **Files:** `.claude/skills/harvest-repasse/SKILL.md`. **Scope:** XS.
 
-## Risks and mitigations
+### Checkpoint 3: Orchestrated
+- [ ] One command runs all phase-1 sources end-to-end with goal filter + cleanup.
+- [ ] `npm test` green.
+
+---
+
+### Phase 4: Verification via sync-risk-checks (qualification gate)
+
+- [ ] **Task 4.1: `list-targets.ts` phase-1 mode + outcome mapping in `write-result.ts`**
+  - **Description:** `list-targets.ts` gains `--phase pre` (pre_repossession cars with a plate, active stages). `write-result.ts` maps phase-1 outcomes: gravame confirmed → stage `researching` + note; no gravame → `financing_lien` item `warning` + "possível golpe / não financiado" note, stays `new_lead`; judicial/RENAJUD hit → `repasseUrgency = "high"` (via `repasse-urgency` recompute).
+  - **Acceptance criteria:**
+    - [ ] Three outcome paths unit-tested against a seeded car.
+    - [ ] Plateless phase-1 cars excluded from targets.
+  - **Verification:** `scripts/risk-checks/__tests__/` green; `npm test`.
+  - **Dependencies:** 0.1, 0.4. **Files:** `scripts/risk-checks/list-targets.ts`, `write-result.ts`, tests. **Scope:** M.
+
+- [ ] **Task 4.2: `sync-risk-checks` skill update**
+  - **Description:** Document the phase-1 flow (financing_lien + judicial_restriction only for repasse leads; the human step of obtaining the plate from the seller; outcome meanings).
+  - **Acceptance criteria:** skill doc covers phase-1 invocation and outcome table from the spec.
+  - **Verification:** doc review.
+  - **Dependencies:** 4.1. **Files:** `.claude/skills/sync-risk-checks/SKILL.md`. **Scope:** XS.
+
+### Checkpoint 4: Qualification gate live
+- [ ] One real repasse lead with a plate driven through the browser checks; correct stage/urgency result.
+- [ ] Owner review.
+
+---
+
+### Phase 5: UI surfacing
+
+- [ ] **Task 5.1: Table badges + phase filter**
+  - **Description:** `cars-table-view.tsx`: phase badge (Pré-apreensão / Leilão) + urgency badge (high=red, medium=amber, low=neutral); phase filter alongside existing filters. `aggregate.ts` already maps fields from 0.1.
+  - **Acceptance criteria:**
+    - [ ] Auction rows unchanged visually except the phase column/badge; repasse rows show urgency.
+    - [ ] Filter narrows correctly.
+  - **Verification:** dev-server render check; existing component tests green.
+  - **Dependencies:** 0.1. **Files:** `src/components/cars/cars-table-view.tsx`. **Scope:** S.
+
+- [ ] **Task 5.2: Detail economics block**
+  - **Description:** `car-detail-tabs.tsx`: for pre_repossession cars, a "Repasse" block: entrada, saldo devedor, parcela × restantes, contato, urgency, with "não informado" for nulls.
+  - **Acceptance criteria:** block absent for auction cars; nulls render as "não informado", never 0.
+  - **Verification:** dev-server render of one repasse + one auction car.
+  - **Dependencies:** 0.1, data from Phase 1. **Files:** `src/components/cars/car-detail-tabs.tsx`. **Scope:** S.
+
+### Checkpoint 5 (Final)
+- [ ] `npm test` green; `npx tsc --noEmit` green.
+- [ ] Full `--phase pre` run: ≥20 combined phase-1 leads written (OLX expected to dominate).
+- [ ] ≥1 lead driven through verification to `researching`.
+- [ ] LGPD spot-check: no CPF anywhere; contacts only in `sellerContact`.
+- [ ] Owner sign-off.
+
+---
+
+## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
-|---|---|---|
-| Plate-only false merges (masked/shared plates) | Med | Prefer chassis; note weak plate merges; never merge without plate/chassis |
-| BIDchain white-label domain sprawl | Med | Skill lists known hosts; canonicalize lot URL as written `sourceUrl` |
-| Leilões PB / MGL need login after all | Med | Probe first; VIP-style session only with owner approval |
-| Large harvest fills DB | Low | 1000 writes/source/run ceiling + goal-aware skip |
-| UI forgets secondary sources | Low | Task 3 before declaring Phase 1 done |
+|------|--------|------------|
+| OLX anti-bot blocks search scraping | High | Probe first (2.1); stop-and-report rule; Repasso/Repasses keep phase 1 alive meanwhile |
+| Economics regexes misread free text (wrong saldo) | High | Conservative null-on-ambiguity, table-driven tests, breakdown stamped in note for human check |
+| Golpe do repasse (scam ads) | Med | Verification gate is the filter; no-gravame → warning; no money moves from this tool |
+| Very few ads expose plates → verification bottleneck | Med | Expected; plateless leads stay `new_lead` with human follow-up step; paid plate APIs are the follow-up spec |
+| Repasso/Repasses volume too small to matter | Low | They are the safe proving ground; OLX is the volume source |
+| Cross-phase dedup misses (no plate/chassis) | Med | `identity.ts` proximity match; worst case duplicate car, caught at human review |
 
-## Out of scope (do not schedule)
+## Open Questions
 
-- In-app bidding / lance placement
-- Cron / unattended harvest
-- Fuzzy dedup without plate/chassis
+- OLX region scope: active goal's UF only, or nationwide? (Default in plan: goal band + region; owner can widen.)
+- Should `apply-goal-filter` score repasse leads differently (e.g., ignore mileage nulls more leniently)? Default: same rules, revisit after Checkpoint 2 data.

@@ -35,6 +35,7 @@ function extractKeyedAmount(
   text: string,
   keyword: RegExp,
   range: { min: number; max: number },
+  reversedKeyword?: RegExp,
 ): number | null {
   const re = new RegExp(
     keyword.source + String.raw`[\s:]*(?:de\s+)?(?:no valor de\s+)?(?:R?\$\s*)?` + AMOUNT,
@@ -48,10 +49,22 @@ function extractKeyedAmount(
     const value = parseAmount(m[m.length - 2] as string, m[m.length - 1] as string | undefined);
     if (value !== null && inRange(value, range)) values.add(value);
   }
+  if (reversedKeyword) {
+    // "30 mil de parte", "R$ 12.000 de entrada" — amount BEFORE the keyword.
+    const rev = new RegExp(
+      String.raw`(?:R?\$\s*)?` + AMOUNT + String.raw`\s+de\s+` + reversedKeyword.source,
+      "gi",
+    );
+    for (const m of text.matchAll(rev)) {
+      const value = parseAmount(m[m.length - 2] as string, m[m.length - 1] as string | undefined);
+      if (value !== null && inRange(value, range)) values.add(value);
+    }
+  }
   return single(values);
 }
 
 const ENTRY_KEY = /(?:entrada|[áa]gio)/;
+const ENTRY_REVERSED_KEY = /(?:parte|entrada|[áa]gio)\b/;
 const DEBT_KEY = /(?:saldo(?:\s+devedor)?|devendo|d[íi]vida(?:\s+de)?)/;
 
 // "48x de R$ 1.100" / "restam 30 parcelas de R$ 1.250" / "parcelas de R$ 899"
@@ -74,7 +87,7 @@ function single<T>(values: Set<T>): T | null {
 }
 
 export function extractRepasseEconomics(text: string): RepasseEconomics {
-  const entryAskBRL = extractKeyedAmount(text, ENTRY_KEY, ENTRY_RANGE);
+  const entryAskBRL = extractKeyedAmount(text, ENTRY_KEY, ENTRY_RANGE, ENTRY_REVERSED_KEY);
   const outstandingDebtBRL = extractKeyedAmount(text, DEBT_KEY, DEBT_RANGE);
 
   const counts = new Set<number>();

@@ -4,19 +4,19 @@ Spec: `docs/superpowers/specs/2026-07-17-pre-repossession-repasse-ingestion-desi
 Plan: `tasks/plan.md`
 Prior (Tier 1, implemented, human checks pending): `tasks/plan-tier1.md` / `tasks/todo-tier1.md`
 
-Status: **Not started — plan awaiting owner review**
+Status: **Phase 0 implemented (2026-07-17)** — awaiting Checkpoint 0 human review
 
 ---
 
 ## Phase 0: Data model + shared repasse libs
 
-- [ ] **Task 0.1** Schema + types: `dealPhase`, repasse columns, `sellerType "repasse"`, aggregate mapping, migration + backfill
-- [ ] **Task 0.2** `write-lead.ts`: repasse input fields, pricing rule, cross-phase "window closed" merge note
-- [ ] **Task 0.3** `lib/repasse-economics.ts`: entrada/saldo/parcela/contact extraction, null-on-ambiguity + tests
-- [ ] **Task 0.4** `lib/repasse-urgency.ts`: high/medium/low heuristic + tests
+- [x] **Task 0.1** Schema + types: `dealPhase`, repasse columns, `sellerType "repasse"`, aggregate mapping, migration + backfill (560 cars → auction)
+- [x] **Task 0.2** `write-lead.ts`: repasse input fields, pricing rule, cross-phase "window closed" merge note
+- [x] **Task 0.3** `lib/repasse-economics.ts`: entrada/saldo/parcela/contact extraction, null-on-ambiguity + tests
+- [x] **Task 0.4** `lib/repasse-urgency.ts`: high/medium/low heuristic + tests
 
 ### Checkpoint 0
-- [ ] `npm test` + `npx tsc --noEmit` green; migration applied
+- [x] `npm test` (242) + `npx tsc --noEmit` green; migration applied; `/` renders 200
 - [ ] Human review of pricing rule behavior
 
 ---

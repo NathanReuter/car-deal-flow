@@ -21,15 +21,13 @@ Status: **Phase 0 implemented (2026-07-17)** — awaiting Checkpoint 0 human rev
 
 ---
 
-## Phase 1: Repasso + Repasses
+## Phase 1: Repasso + Repasses — **CANCELLED (both sources dead)**
 
-- [ ] **Task 1.1** Repasso probe doc + fixtures
-- [ ] **Task 1.2** `repasso-harvest.ts` end-to-end + fixture tests
-- [ ] **Task 1.3** Repasses wp-json probe + `repasses-harvest.ts` + tests
+- [x] **Task 1.1** Repasso probe: site dead since Nov 2020 (see `docs/superpowers/specs/2026-07-17-repasso-repasses-probe.md`)
+- [x] ~~**Task 1.2** `repasso-harvest.ts`~~ — dropped
+- [x] **Task 1.3** Repasses probe: app-only landing page; marketplace SPA has expired SSL — dropped
 
-### Checkpoint 1
-- [ ] Real `pre_repossession` leads in DB, correct pricing/notes
-- [ ] Human reviews ~10 sample rows
+### Checkpoint 1 → folded into Checkpoint 2 (OLX proves the phase-1 path)
 
 ---
 

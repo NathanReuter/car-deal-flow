@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { detectDamageSignals } from "../../src/lib/filters/damageSignals";
 import type { BodyType } from "../../src/lib/types";
 import { isCliEntry } from "./fetch-guards";
+import { guessBodyTypeByModel } from "./lib/parse-common";
 
 const LOTS_DIR = "/tmp/mgl-harvest/lots";
 const LIST_JSON = "/tmp/mgl-harvest/lots-all.json";
@@ -157,51 +158,6 @@ function extractPrice(html: string, list: MglListLotRow): number | null {
   return null;
 }
 
-function guessBodyType(model: string): BodyType | null {
-  const m = model
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toUpperCase();
-
-  if (
-    /\b(STRADA|SAVEIRO|TORO|HILUX|RANGER|S10|MAVERICK|OROCH|MONTANA|FRONTIER|AMAROK|L200|FIORINO|PARTNER|MONTANA|DOBLO CARGO)\b/.test(
-      m,
-    )
-  ) {
-    return "pickup";
-  }
-  if (/\b(SPIN|DOBLO|IDEA|LIVINA|JACARE|MULTIPLA|XPANDER|ZAFIRA|PICASSO|MERIVA|TRAFIC|KANGOO|PARTNER TEPEE)\b/.test(m)) {
-    return "minivan";
-  }
-  if (
-    /\b(CRETA|COMPASS|TRACKER|T[-\s]?CROSS|TCROSS|KICKS|HR-V|HRV|RENEGADE|DUSTER|CAPTUR|COROLLA CROSS|SW4|PAJERO|AIRCROSS|2008|3008|5008|ECOSPORT|TIGGO|CAOA|HAVAL|TAOS|NIVUS|FASTBACK|PULSE|COMMANDER|BRONCO|TUCSON|SPORTAGE|IX35|OUTLANDER|DISCOVERY|EVOQUE|FREELANDER|CR-V|CRV|ASX|ECLIPSE CROSS|KAROQ|KODIAQ|TIGUAN|TERRITORY|BIGSTER|CAPTIVA)\b/.test(
-      m,
-    )
-  ) {
-    return "suv";
-  }
-  if (
-    /\b(CIVIC|COROLLA|CRUZE|FOCUS|FUSION|SENTRA|VERSA|PRISMA|ONIX PLUS|COBALT|CLASSIC|SIENA|GRAND SIENA|LINEA|VOYAGE|VIRTUS|JETTA|CITY|ARRIZO|FLUENCE|LOGAN|SYMBOL|NEST|NEON|PASSAT|AZERA|OPTIMA|CERATO|LANCER|S90|S60|A3 SEDAN|A4|ACCORD)\b/.test(
-      m,
-    )
-  ) {
-    return "sedan";
-  }
-  if (
-    /\b(UNO|PALIO|GOL|FOX|UP[! ]|POLO|GOLF|KA\b|FIESTA|ONIX(?!\s+PLUS)|HB20(?!\s*S)|SANDERO|CLIO|207|208|\bC3\b|MOBI|ARGO|CRONOS|YARIS(?!\s*SEDAN)|ETIOS(?!\s*SEDAN)|KA\+|MARCH|KWID|PICANTO|i30|CELTA|CORSA|AGILE|SPACEFOX|CROSSFOX|KADETT|CHEVETTE|MONZA(?!\s+WAGON)|OPALA)\b/.test(
-      m,
-    )
-  ) {
-    return "hatch";
-  }
-  if (/\bHB20S\b/.test(m)) return "sedan";
-  if (/\bCRONOS\b/.test(m)) return "sedan";
-  if (/\bARGO\b/.test(m)) return "hatch";
-  if (/\b(GOLF\s*VARIANT|SPACEFOX|PARATI|FOC\w*\s*SW|I30\s*CW)\b/.test(m)) {
-    return "wagon";
-  }
-  return null;
-}
 
 function splitBrandModel(modelo: string): { brand: string; model: string } | null {
   let t = modelo.replace(/\s+/g, " ").trim();
@@ -393,7 +349,7 @@ export function parseMglLot(id: number, url: string, html: string, list: MglList
     };
   }
 
-  const bodyType = guessBodyType(brandModel.model);
+  const bodyType = guessBodyTypeByModel(brandModel.model);
   if (!bodyType) {
     return {
       id,

@@ -49,6 +49,7 @@ export const BRAND_ALIASES: Record<string, string> = {
   MERCEDES: "Mercedes-Benz",
   "MERCEDES-BENZ": "Mercedes-Benz",
   "MERCEDES BENZ": "Mercedes-Benz",
+  "M.BENZ": "Mercedes-Benz",
   CHERY: "Chery",
   "CAOA CHERY": "Caoa Chery",
   BYD: "BYD",
@@ -139,6 +140,37 @@ export function normalizeBrandModel(brandRaw: string, modelRaw: string): { brand
     model = model.replace(new RegExp(`^${escaped}\\s+`, "i"), "").trim();
   }
   return { brand, model };
+}
+
+/**
+ * Model-name → body-type heuristic shared by the auction sources (BIDchain, MGL).
+ * Order matters: pickup → minivan → SUV → sedan → hatch, then a few post-hoc
+ * overrides, then wagon. Canonical union of the previously-duplicated per-source
+ * copies (MGL's richer ruleset, plus BIDchain-only tokens: B180/B200, 320i/318i/A5).
+ */
+export function guessBodyTypeByModel(model: string): BodyType | null {
+  const m = model.normalize("NFD").replace(/\p{M}/gu, "").toUpperCase();
+
+  if (/\b(STRADA|SAVEIRO|TORO|HILUX|RANGER|S10|MAVERICK|OROCH|MONTANA|FRONTIER|AMAROK|L200|FIORINO|PARTNER|DOBLO CARGO)\b/.test(m)) {
+    return "pickup";
+  }
+  if (/\b(SPIN|DOBLO|IDEA|LIVINA|JACARE|MULTIPLA|XPANDER|ZAFIRA|PICASSO|MERIVA|TRAFIC|KANGOO|PARTNER TEPEE|B180|B200)\b/.test(m)) {
+    return "minivan";
+  }
+  if (/\b(CRETA|COMPASS|TRACKER|T[-\s]?CROSS|TCROSS|KICKS|HR-V|HRV|RENEGADE|DUSTER|CAPTUR|COROLLA CROSS|SW4|PAJERO|AIRCROSS|2008|3008|5008|ECOSPORT|TIGGO|CAOA|HAVAL|TAOS|NIVUS|FASTBACK|PULSE|COMMANDER|BRONCO|TUCSON|SPORTAGE|IX35|OUTLANDER|DISCOVERY|EVOQUE|FREELANDER|CR-V|CRV|ASX|ECLIPSE CROSS|KAROQ|KODIAQ|TIGUAN|TERRITORY|BIGSTER|CAPTIVA)\b/.test(m)) {
+    return "suv";
+  }
+  if (/\b(CIVIC|COROLLA|CRUZE|FOCUS|FUSION|SENTRA|VERSA|PRISMA|ONIX PLUS|COBALT|CLASSIC|SIENA|GRAND SIENA|LINEA|VOYAGE|VIRTUS|JETTA|CITY|ARRIZO|FLUENCE|LOGAN|SYMBOL|NEST|NEON|PASSAT|AZERA|OPTIMA|CERATO|LANCER|S90|S60|A3 SEDAN|A4|A5|320I|318I|ACCORD)\b/.test(m)) {
+    return "sedan";
+  }
+  if (/\b(UNO|PALIO|GOL|FOX|UP[! ]|POLO|GOLF|KA\b|FIESTA|ONIX(?!\s+PLUS)|HB20(?!\s*S)|SANDERO|CLIO|207|208|\bC3\b|MOBI|ARGO|CRONOS|YARIS(?!\s*SEDAN)|ETIOS(?!\s*SEDAN)|KA\+|MARCH|KWID|PICANTO|i30|CELTA|CORSA|AGILE|SPACEFOX|CROSSFOX|KADETT|CHEVETTE|MONZA(?!\s+WAGON)|OPALA)\b/.test(m)) {
+    return "hatch";
+  }
+  if (/\bHB20S\b/.test(m)) return "sedan";
+  if (/\bCRONOS\b/.test(m)) return "sedan";
+  if (/\bARGO\b/.test(m)) return "hatch";
+  if (/\b(GOLF\s*VARIANT|SPACEFOX|PARATI|FOC\w*\s*SW|I30\s*CW)\b/.test(m)) return "wagon";
+  return null;
 }
 
 export function inferBodyType(brand: string, model: string, blob: string): BodyType | null {

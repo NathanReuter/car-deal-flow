@@ -1,8 +1,14 @@
 import { defineConfig } from "vitest/config";
+import path from "node:path";
 
 export default defineConfig({
   test: {
-    include: ["scripts/**/*.test.ts"],
+    include: ["scripts/**/*.test.ts", "src/**/*.test.ts"],
     testTimeout: 20000,
+  },
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
   },
 });

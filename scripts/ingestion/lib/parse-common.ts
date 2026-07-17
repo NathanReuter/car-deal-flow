@@ -125,6 +125,22 @@ export function normalizeBrand(raw: string): string {
   return BRAND_ALIASES[trimmed] || BRAND_ALIASES[trimmed.toUpperCase()] || trimmed;
 }
 
+/**
+ * Normalize a brand and strip a leading repetition of the brand from the model
+ * (OLX "Modelo" often repeats the brand, e.g. "Chevrolet Onix Plus LT").
+ * Returns the canonical brand and the de-duplicated model.
+ */
+export function normalizeBrandModel(brandRaw: string, modelRaw: string): { brand: string; model: string } {
+  const brand = normalizeBrand(brandRaw);
+  let model = modelRaw.trim();
+  for (const prefix of [brand, brandRaw.trim()]) {
+    if (!prefix) continue;
+    const escaped = prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    model = model.replace(new RegExp(`^${escaped}\\s+`, "i"), "").trim();
+  }
+  return { brand, model };
+}
+
 export function inferBodyType(brand: string, model: string, blob: string): BodyType | null {
   const text = `${brand} ${model} ${blob}`;
   if (NON_CAR.test(text)) return null;

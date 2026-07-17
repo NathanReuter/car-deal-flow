@@ -49,6 +49,39 @@ export async function writeResult(prisma: PrismaClient, input: WriteResultInput)
     where: { carId: input.carId },
     data: { items: JSON.stringify(items) },
   });
+
+  await applyRepasseSideEffects(prisma, input);
+}
+
+/** Phase-1 qualification outcomes (spec §Verification):
+ *  - gravame confirmed (financing_lien verified) → lead is real → researching;
+ *  - no gravame (warning/failed) → possible golpe → stays where it is;
+ *  - judicial/RENAJUD restriction found → the repossession clock is running →
+ *    urgency high. Auction-phase cars are untouched. */
+async function applyRepasseSideEffects(prisma: PrismaClient, input: WriteResultInput): Promise<void> {
+  const car = await prisma.car.findUnique({ where: { id: input.carId } });
+  if (!car || car.dealPhase !== "pre_repossession") return;
+
+  if (input.key === "financing_lien" && input.status === "verified" && car.pipelineStage === "new_lead") {
+    await prisma.car.update({
+      where: { id: car.id },
+      data: {
+        pipelineStage: "researching",
+        stageReason: "Gravame confirmado — financiamento real, lead qualificado.",
+      },
+    });
+  }
+
+  if (
+    input.key === "judicial_restriction" &&
+    (input.status === "warning" || input.status === "failed") &&
+    car.repasseUrgency !== "high"
+  ) {
+    await prisma.car.update({
+      where: { id: car.id },
+      data: { repasseUrgency: "high" },
+    });
+  }
 }
 
 function parseArgs(argv: string[]): WriteResultInput {

@@ -97,7 +97,27 @@ re-login is needed):
 Never attempt to solve or bypass a CAPTCHA. Never write `verified` or
 `failed` without a confident, cross-checked match.
 
-## Verifying this skill works
+## Phase 1: pre-repossession (repasse) qualification
+
+Repasse leads (`dealPhase = pre_repossession`, harvested by `harvest-repasse`)
+use an inverted expectation for the lien check: **an active gravame is the
+expected, good outcome** — it proves the ad's financing is real.
+
+List only these targets (plated repasse cars; `financing_lien` +
+`judicial_restriction` keys only):
+
+```bash
+npx tsx scripts/risk-checks/list-targets.ts --phase pre
+```
+
+| Finding on the Detran/gov.br page | status | severity | effect (automatic, via write-result) |
+|---|---|---|---|
+| Gravame / alienação fiduciária ativa | `verified` | `low` | Lead promoted `new_lead` → `researching` ("financiamento real") |
+| No gravame for the plate | `warning` | `high` | Stays `new_lead`; note "possível golpe do repasse" |
+| Restrição judicial / RENAJUD ativa | `failed` (or `warning`) | `high` | `repasseUrgency` → `high` (repossession clock running) |
+
+Plateless repasse leads never appear in `--phase pre` targets — obtaining the
+plate from the seller is a human step, recorded manually on the car first.
 
 First check what's actually due — the seeded demo data ships with all 6
 automatable keys already marked `verified` (manual baseline), so a fresh

@@ -23,19 +23,30 @@ export interface SyncTarget {
   key: RiskCheckKey;
 }
 
+/** Phase-1 qualification runs only the checks that confirm a real financing. */
+const PRE_PHASE_KEYS: RiskCheckKey[] = ["financing_lien", "judicial_restriction"];
+
 export interface ListTargetsOptions {
   carId?: string;
   staleDays?: number;
+  /** "pre" = pre_repossession cars with a plate; lien+judicial keys only. */
+  phase?: "pre";
 }
 
 export async function listTargets(prisma: PrismaClient, options: ListTargetsOptions = {}): Promise<SyncTarget[]> {
   const staleDays = options.staleDays ?? 30;
   const staleCutoff = Date.now() - staleDays * 24 * 60 * 60 * 1000;
+  const keys = options.phase === "pre" ? PRE_PHASE_KEYS : AUTOMATABLE_KEYS;
 
   const cars = await prisma.car.findMany({
     where: options.carId
       ? { id: options.carId }
-      : { pipelineStage: { in: ACTIVE_STAGES } },
+      : {
+          pipelineStage: { in: ACTIVE_STAGES },
+          ...(options.phase === "pre"
+            ? { dealPhase: "pre_repossession", plate: { not: null } }
+            : {}),
+        },
     include: { riskCheck: true },
   });
 
@@ -45,7 +56,7 @@ export async function listTargets(prisma: PrismaClient, options: ListTargetsOpti
     if (!car.riskCheck) continue;
     const items = JSON.parse(car.riskCheck.items) as RiskCheckItem[];
 
-    for (const key of AUTOMATABLE_KEYS) {
+    for (const key of keys) {
       const item = items.find((i) => i.key === key);
       if (!item) continue;
 
@@ -79,9 +90,14 @@ function parseArgs(argv: string[]) {
   };
   const carId = get("--car");
   const staleDaysRaw = get("--stale-days");
+  const phaseRaw = get("--phase");
+  if (phaseRaw !== undefined && phaseRaw !== "pre") {
+    throw new Error(`Invalid --phase "${phaseRaw}". Only "pre" is supported.`);
+  }
   return {
     carId,
     staleDays: staleDaysRaw ? parseInt(staleDaysRaw, 10) : undefined,
+    phase: phaseRaw as "pre" | undefined,
   };
 }
 

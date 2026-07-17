@@ -77,7 +77,7 @@ const PARCELA_VALUE = new RegExp(
 
 // Phones only next to explicit contact wording — a bare number could be anything.
 const CONTACT = new RegExp(
-  String.raw`(?:whats(?:app)?|zap|contato|fone|telefone|tel|chamar|ligar?)\D{0,15}` +
+  String.raw`(?:whats(?:app)?|wtpp|wpp|zap|contato|fone|telefone|tel|chamar|ligar?)\D{0,15}` +
     String.raw`((?:\+?55\s*)?\(?\d{2}\)?\s*9?\s?\d{4}[-.\s]?\d{4})`,
   "i",
 );

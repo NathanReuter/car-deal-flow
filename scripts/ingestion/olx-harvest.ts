@@ -108,7 +108,8 @@ export async function harvestOlxAds(options: {
         continue;
       }
 
-      const { input, skipReason } = olxToWriteLead(detail);
+      // Fall back to the list card's URL when the ad JSON lacks friendlyUrl.
+      const { input, skipReason } = olxToWriteLead({ ...detail, url: detail.url || ad.url });
       if (!input) {
         bumpSkip(summary, skipReason ?? "skipped");
         continue;

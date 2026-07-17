@@ -34,6 +34,14 @@ describe("parseOlxDetail", () => {
     expect(ad.uf).toBe("PA");
     expect(ad.municipality).toBe("Ananindeua");
     expect(ad.body).toContain("30 mil de parte");
+    // friendlyUrl (the ad's own regional URL) — canonicalUrl is a category page
+    // shared by many ads and would collide on the unique sourceUrl column.
+    expect(ad.url).toContain(ad.listId);
+    // Structured financing/body facts from the ad properties.
+    expect(ad.vehicleType).toBe("Sedã");
+    expect(ad.financiado).toBe(true);
+    expect(ad.quitado).toBe(false);
+    expect(ad.deLeilao).toBe(false);
   });
 
   it("returns null for HTML without initial-data", () => {
@@ -75,6 +83,22 @@ describe("olxToWriteLead", () => {
     const ad = parseOlxDetail(detailHtml)!;
     const plain = { ...ad, subject: "Vendo Onix quitado", body: "Carro quitado, sem financiamento." };
     expect(olxToWriteLead(plain).skipReason).toBe("no_financing_signal");
+  });
+
+  it("skips ads whose structured props say the car is paid off (dealer 'preço de repasse')", () => {
+    const ad = parseOlxDetail(detailHtml)!;
+    expect(olxToWriteLead({ ...ad, quitado: true }).skipReason).toBe("not_financed");
+    expect(olxToWriteLead({ ...ad, financiado: false }).skipReason).toBe("not_financed");
+    // Unknown props (null) fall back to the text signal alone.
+    expect(olxToWriteLead({ ...ad, financiado: null, quitado: null }).input).toBeDefined();
+  });
+
+  it("uses the structured vehicle type for bodyType and flags ex-auction cars", () => {
+    const ad = parseOlxDetail(detailHtml)!;
+    const { input } = olxToWriteLead(ad);
+    expect(input!.bodyType).toBe("sedan");
+    const auction = olxToWriteLead({ ...ad, deLeilao: true });
+    expect(auction.input!.notes).toMatch(/leilão/i);
   });
 
   it("skips damaged ads at parse level", () => {

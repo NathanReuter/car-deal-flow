@@ -29,6 +29,12 @@ export interface OlxAdDetail {
   color: string | null;
   municipality: string | null;
   uf: string | null;
+  /** "Tipo de veículo" prop (Sedã, Hatch, SUV, …). */
+  vehicleType: string | null;
+  /** Structured financing facts from ad props; null = not stated. */
+  financiado: boolean | null;
+  quitado: boolean | null;
+  deLeilao: boolean | null;
 }
 
 const FINANCING_SIGNAL =
@@ -89,12 +95,20 @@ export function parseOlxDetail(html: string): OlxAdDetail | null {
           ? ad.origListTime
           : null;
 
+  const bool = (label: string): boolean | null => {
+    const v = prop(label);
+    if (v === "Sim") return true;
+    if (v === "Não") return false;
+    return null;
+  };
+
   const yearRaw = prop("Ano");
   const year = yearRaw && /^\d{4}$/.test(yearRaw) ? Number(yearRaw) : null;
 
   return {
     listId: String(ad.listId),
-    url: ad.canonicalUrl || ad.friendlyUrl || "",
+    // friendlyUrl is the ad's own URL; canonicalUrl is a shared category page.
+    url: ad.friendlyUrl || "",
     subject: ad.subject,
     body: ad.body ?? "",
     priceValueBRL: parseBrl(ad.priceValue),
@@ -108,6 +122,10 @@ export function parseOlxDetail(html: string): OlxAdDetail | null {
     color: prop("Cor"),
     municipality: ad.location?.municipality ?? null,
     uf: ad.location?.uf ?? null,
+    vehicleType: prop("Tipo de veículo"),
+    financiado: bool("Financiado"),
+    quitado: bool("Quitado"),
+    deLeilao: bool("De leilão"),
   };
 }
 
@@ -136,10 +154,32 @@ export interface OlxToWriteLeadResult {
   skipReason?: string;
 }
 
+/** OLX "Tipo de veículo" → domain BodyType. */
+const VEHICLE_TYPE_MAP: Record<string, WriteLeadInput["bodyType"]> = {
+  "sedã": "sedan",
+  seda: "sedan",
+  sedan: "sedan",
+  hatch: "hatch",
+  hatchback: "hatch",
+  suv: "suv",
+  picape: "pickup",
+  "pick-up": "pickup",
+  van: "minivan",
+  minivan: "minivan",
+  "cupê": "coupe",
+  cupe: "coupe",
+  conversível: "coupe",
+  perua: "wagon",
+  wagon: "wagon",
+};
+
 export function olxToWriteLead(ad: OlxAdDetail): OlxToWriteLeadResult {
   const blob = `${ad.subject}\n${ad.body}`;
 
   if (!hasFinancingSignal(blob)) return { skipReason: "no_financing_signal" };
+  // Structured props beat free text: a paid-off car cannot be a financing
+  // transfer — kills dealer "preço de repasse" false positives.
+  if (ad.quitado === true || ad.financiado === false) return { skipReason: "not_financed" };
 
   const damage = detectDamageSignals(blob);
   if (damage.blocked) return { skipReason: "damage_signals" };
@@ -151,7 +191,9 @@ export function olxToWriteLead(ad: OlxAdDetail): OlxToWriteLeadResult {
   const modelRaw = ad.model.replace(new RegExp(`^${ad.brand}\\s+`, "i"), "").trim();
   const { brand, model } = normalizeBrandModel(ad.brand, modelRaw);
 
-  const bodyType = inferBodyType(brand, model, blob);
+  const bodyType =
+    (ad.vehicleType ? VEHICLE_TYPE_MAP[ad.vehicleType.toLowerCase()] : undefined) ??
+    inferBodyType(brand, model, blob);
   if (!bodyType) return { skipReason: "no_body_type" };
 
   const economics = extractRepasseEconomics(ad.body);
@@ -166,6 +208,8 @@ export function olxToWriteLead(ad: OlxAdDetail): OlxToWriteLeadResult {
     economics.entryAskBRL === null
       ? "entrada = preço anunciado no OLX (não declarada no texto)."
       : null,
+    ad.financiado === true ? "OLX props: veículo financiado (confirmado pelo anúncio)." : null,
+    ad.deLeilao === true ? "OLX props: veículo de leilão — checar histórico." : null,
     ad.listTime ? `Anúncio publicado em ${ad.listTime.slice(0, 10)}.` : null,
   ]
     .filter((n): n is string => Boolean(n))

@@ -44,7 +44,8 @@ export type SellerType =
   | "dealer"
   | "auction"
   | "bank_recovery"
-  | "caixa_recovery";
+  | "caixa_recovery"
+  | "repasse";
 
 export const SELLER_TYPE_LABEL: Record<SellerType, string> = {
   owner: "Owner (particular)",
@@ -52,7 +53,29 @@ export const SELLER_TYPE_LABEL: Record<SellerType, string> = {
   auction: "Auction",
   bank_recovery: "Bank Recovery",
   caixa_recovery: "Caixa / Repossessed",
+  repasse: "Repasse (assumir financiamento)",
 };
+
+/** Where in the repossession lifecycle the deal sits. */
+export type DealPhase = "pre_repossession" | "auction";
+
+export const DEAL_PHASE_LABEL: Record<DealPhase, string> = {
+  pre_repossession: "Pré-apreensão",
+  auction: "Leilão",
+};
+
+export type RepasseUrgency = "high" | "medium" | "low";
+
+/** Repasse deal economics — null means the ad did not disclose it (never guessed). */
+export interface RepasseInfo {
+  entryAskBRL: number | null;
+  outstandingDebtBRL: number | null;
+  installmentBRL: number | null;
+  installmentsRemaining: number | null;
+  /** One contact handle max (LGPD minimization); lives only here. */
+  sellerContact: string | null;
+  urgency: RepasseUrgency | null;
+}
 
 export type FuelType = "flex" | "gasoline" | "diesel" | "hybrid" | "electric";
 export type Transmission = "manual" | "automatic" | "cvt" | "automated_manual";
@@ -92,7 +115,12 @@ export interface Car {
   sourceUrl: string;
   sourcePlatform: string;
   /** All harvest origins; primary is first (matches sourceUrl). Optional for scoring-only paths. */
-  sources?: { url: string; platform: string; isPrimary: boolean }[];
+  sources?: {
+    url: string;
+    platform: string;
+    isPrimary: boolean;
+    auctionDate: string | null;
+  }[];
   notes: string;
   plate?: string;
   chassis?: string;
@@ -107,6 +135,11 @@ export interface Car {
 
   // Null until a confident FIPE sync — never treat 0 as a real valuation.
   fipeValueBRL: number | null;
+
+  /** Undefined on legacy in-memory fixtures — treat as "auction". */
+  dealPhase?: DealPhase;
+  /** Present only for pre_repossession leads. */
+  repasse?: RepasseInfo;
 }
 
 // ---------------------------------------------------------------------------

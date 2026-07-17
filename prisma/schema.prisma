@@ -39,6 +39,18 @@ model Car {
   // Null until a confident FIPE sync — never store 0 as a fake valuation.
   fipeValueBRL Int?
 
+  // "auction" (post-repossession lot) or "pre_repossession" (repasse ad).
+  dealPhase String @default("auction")
+
+  // Repasse economics — pre_repossession only; null = not disclosed in the ad.
+  entryAskBRL           Int?
+  outstandingDebtBRL    Int?
+  installmentBRL        Int?
+  installmentsRemaining Int?
+  // One contact handle max (LGPD minimization) — never copied into notes/exports.
+  sellerContact  String?
+  repasseUrgency String? // "high" | "medium" | "low"
+
   manualVerdictOverride String?
   overrideReason        String?
   // Why the car is in its current stage (goal-filter notes, etc.).

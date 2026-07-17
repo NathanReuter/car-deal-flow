@@ -14,6 +14,7 @@ import type {
   RiskCheck,
   RiskCheckItem,
   ConditionField,
+  RepasseUrgency,
 } from "@/lib/types";
 import type {
   Car as DbCar,
@@ -67,7 +68,16 @@ function toCar(row: DbCarWithRelations): Car {
     color: row.color,
     sourceUrl: row.sourceUrl,
     sourcePlatform: row.sourcePlatform,
-    sources: displaySources(row.sourceUrl, row.sourcePlatform, row.sources),
+    sources: displaySources(
+      row.sourceUrl,
+      row.sourcePlatform,
+      row.sources.map((s) => ({
+        sourceUrl: s.sourceUrl,
+        sourcePlatform: s.sourcePlatform,
+        firstSeenAt: s.firstSeenAt,
+        auctionDate: s.auctionDate,
+      })),
+    ),
     notes: row.notes,
     plate: row.plate ?? undefined,
     chassis: row.chassis ?? undefined,
@@ -86,6 +96,18 @@ function toCar(row: DbCarWithRelations): Car {
     overrideReason: row.overrideReason ?? undefined,
     stageReason: row.stageReason ?? undefined,
     fipeValueBRL: row.fipeValueBRL,
+    dealPhase: row.dealPhase as Car["dealPhase"],
+    repasse:
+      row.dealPhase === "pre_repossession"
+        ? {
+            entryAskBRL: row.entryAskBRL,
+            outstandingDebtBRL: row.outstandingDebtBRL,
+            installmentBRL: row.installmentBRL,
+            installmentsRemaining: row.installmentsRemaining,
+            sellerContact: row.sellerContact,
+            urgency: row.repasseUrgency as RepasseUrgency | null,
+          }
+        : undefined,
   };
 }
 

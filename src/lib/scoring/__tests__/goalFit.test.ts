@@ -49,6 +49,7 @@ function baseCar(overrides: Partial<Car> = {}): Car {
     pipelineStage: "new_lead",
     createdAt: "2026-07-14",
     updatedAt: "2026-07-14",
+    fipeValueBRL: null,
     ...overrides,
   };
 }

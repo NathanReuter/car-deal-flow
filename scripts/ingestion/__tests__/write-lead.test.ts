@@ -408,3 +408,108 @@ describe("writeLead", () => {
     expect(car!.stageReason).toBe("Auction date(s) passed.");
   });
 });
+
+describe("writeLead repasse (pre_repossession)", () => {
+  let ctx: TestDbContext;
+
+  beforeEach(() => {
+    ctx = createTestDb();
+  });
+
+  afterEach(async () => {
+    await ctx.cleanup();
+  });
+
+  const repasseInput = {
+    brand: "Fiat",
+    model: "Argo",
+    year: 2023,
+    sourceUrl: "https://olx.com.br/anuncio/argo-repasse-1",
+    sourcePlatform: "OLX",
+    sellerType: "repasse" as const,
+    bodyType: "hatch" as const,
+    dealPhase: "pre_repossession" as const,
+  };
+
+  it("derives askingPriceBRL = entrada + saldo and stamps the breakdown", async () => {
+    const result = await writeLead(ctx.prisma, {
+      ...repasseInput,
+      entryAskBRL: 15000,
+      outstandingDebtBRL: 42000,
+      installmentBRL: 1250,
+      installmentsRemaining: 30,
+      sellerContact: "+55 83 99999-0000",
+    });
+    expect(result.created).toBe(true);
+
+    const car = await ctx.prisma.car.findUnique({ where: { id: result.carId } });
+    expect(car!.dealPhase).toBe("pre_repossession");
+    expect(car!.askingPriceBRL).toBe(57000);
+    expect(car!.entryAskBRL).toBe(15000);
+    expect(car!.outstandingDebtBRL).toBe(42000);
+    expect(car!.installmentBRL).toBe(1250);
+    expect(car!.installmentsRemaining).toBe(30);
+    expect(car!.sellerContact).toBe("+55 83 99999-0000");
+    expect(car!.notes).toMatch(/entrada R\$ ?15\.?000/i);
+    expect(car!.notes).toMatch(/saldo devedor R\$ ?42\.?000/i);
+    // LGPD: contact lives only in its column, never in notes.
+    expect(car!.notes).not.toContain("99999-0000");
+    // Auction lance-mínimo semantics do not apply to repasse leads.
+    expect(car!.notes).not.toContain("lance mínimo");
+  });
+
+  it("writes with entrada only and flags undisclosed saldo devedor", async () => {
+    const result = await writeLead(ctx.prisma, {
+      ...repasseInput,
+      sourceUrl: "https://olx.com.br/anuncio/argo-repasse-2",
+      entryAskBRL: 18000,
+      outstandingDebtBRL: null,
+    });
+    expect(result.created).toBe(true);
+
+    const car = await ctx.prisma.car.findUnique({ where: { id: result.carId } });
+    expect(car!.askingPriceBRL).toBe(18000);
+    expect(car!.outstandingDebtBRL).toBeNull();
+    expect(car!.notes).toMatch(/saldo devedor não informado/i);
+  });
+
+  it("rejects a repasse lead with no entrada (no price anchor)", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...repasseInput,
+        sourceUrl: "https://olx.com.br/anuncio/argo-repasse-3",
+        entryAskBRL: null,
+        outstandingDebtBRL: 42000,
+      }),
+    ).rejects.toThrow(WriteLeadError);
+  });
+
+  it("merges a later auction write into an existing repasse car and stamps window closed", async () => {
+    const first = await writeLead(ctx.prisma, {
+      ...repasseInput,
+      sourceUrl: "https://olx.com.br/anuncio/argo-repasse-4",
+      entryAskBRL: 15000,
+      outstandingDebtBRL: 42000,
+      plate: "ABC1D23",
+    });
+
+    const second = await writeLead(ctx.prisma, {
+      brand: "Fiat",
+      model: "Argo",
+      year: 2023,
+      askingPriceBRL: 52000,
+      sourceUrl: "https://vitrinebradesco.com.br/lot/argo-9",
+      sourcePlatform: "Bradesco Vitrine",
+      sellerType: "bank_recovery",
+      bodyType: "hatch",
+      plate: "ABC1D23",
+    });
+
+    expect(second.merged).toBe(true);
+    expect(second.carId).toBe(first.carId);
+
+    const car = await ctx.prisma.car.findUnique({ where: { id: first.carId } });
+    expect(car!.dealPhase).toBe("auction");
+    expect(car!.notes).toMatch(/reapareceu em leilão/i);
+  });
+});

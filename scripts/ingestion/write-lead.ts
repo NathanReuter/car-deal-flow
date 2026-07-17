@@ -3,8 +3,10 @@ import { PrismaClient } from "../../src/generated/prisma/client";
 import type {
   BodyType,
   ConditionField,
+  DealPhase,
   FuelType,
   PipelineStage,
+  RepasseUrgency,
   RiskCheckItem,
   RiskCheckKey,
   SellerType,
@@ -51,6 +53,7 @@ const VALID_SELLER_TYPES: SellerType[] = [
   "auction",
   "bank_recovery",
   "caixa_recovery",
+  "repasse",
 ];
 
 const VALID_BODY_TYPES: BodyType[] = [
@@ -73,7 +76,19 @@ export interface WriteLeadInput {
   brand: string;
   model: string;
   year: number;
-  askingPriceBRL: number;
+  /** Required for auction leads. For pre_repossession leads it is DERIVED
+   * (entrada + saldo devedor) and must not be supplied. */
+  askingPriceBRL?: number;
+  /** Defaults to "auction". */
+  dealPhase?: DealPhase;
+  // Repasse economics — pre_repossession only. null = ad did not disclose.
+  entryAskBRL?: number | null;
+  outstandingDebtBRL?: number | null;
+  installmentBRL?: number | null;
+  installmentsRemaining?: number | null;
+  /** One contact handle max (LGPD); stored only in its column, never in notes. */
+  sellerContact?: string | null;
+  repasseUrgency?: RepasseUrgency | null;
   sourceUrl: string;
   sourcePlatform: string;
   sellerType: SellerType;
@@ -118,6 +133,76 @@ function requireNumber(value: unknown, field: string): number {
     throw new WriteLeadError(`Missing required field: ${field}`);
   }
   return value;
+}
+
+/** undefined/null → null; otherwise must be a finite number >= 0. */
+function optionalMoney(value: number | null | undefined, field: string): number | null {
+  if (value === undefined || value === null) return null;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new WriteLeadError(`Invalid ${field}: must be a finite number >= 0 or null`);
+  }
+  return value;
+}
+
+interface RepasseColumns {
+  dealPhase: DealPhase;
+  entryAskBRL: number | null;
+  outstandingDebtBRL: number | null;
+  installmentBRL: number | null;
+  installmentsRemaining: number | null;
+  sellerContact: string | null;
+  repasseUrgency: RepasseUrgency | null;
+}
+
+/** Enforces the repasse pricing rule: askingPriceBRL is derived, never guessed.
+ * Entrada unknown → no price anchor → reject. Saldo unknown → entrada only,
+ * flagged as needs-research in the price note. */
+function resolvePricing(input: WriteLeadInput): {
+  dealPhase: DealPhase;
+  askingPriceBRL: number;
+  priceNote: string;
+  repasseColumns: Partial<RepasseColumns>;
+} {
+  const dealPhase = input.dealPhase ?? "auction";
+
+  if (dealPhase !== "pre_repossession") {
+    return {
+      dealPhase,
+      askingPriceBRL: requireNumber(input.askingPriceBRL, "askingPriceBRL"),
+      priceNote: PRICE_SEMANTICS_NOTE,
+      repasseColumns: { dealPhase },
+    };
+  }
+
+  const entry = optionalMoney(input.entryAskBRL, "entryAskBRL");
+  if (entry === null) {
+    throw new WriteLeadError(
+      "Repasse lead without entrada (entryAskBRL) has no price anchor — refusing to guess.",
+    );
+  }
+  const debt = optionalMoney(input.outstandingDebtBRL, "outstandingDebtBRL");
+  const askingPriceBRL = entry + (debt ?? 0);
+  if (askingPriceBRL <= 0) {
+    throw new WriteLeadError("Repasse lead resolves to askingPriceBRL <= 0 — refusing to write.");
+  }
+
+  return {
+    dealPhase,
+    askingPriceBRL,
+    priceNote:
+      debt !== null
+        ? `askingPriceBRL = entrada R$ ${entry} + saldo devedor R$ ${debt}.`
+        : `askingPriceBRL = entrada R$ ${entry}; saldo devedor não informado — needs research.`,
+    repasseColumns: {
+      dealPhase,
+      entryAskBRL: entry,
+      outstandingDebtBRL: debt,
+      installmentBRL: optionalMoney(input.installmentBRL, "installmentBRL"),
+      installmentsRemaining: optionalMoney(input.installmentsRemaining, "installmentsRemaining"),
+      sellerContact: input.sellerContact?.trim() || null,
+      repasseUrgency: input.repasseUrgency ?? null,
+    },
+  };
 }
 
 function buildRiskItems(
@@ -249,7 +334,7 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
   const brand = requireString(input.brand, "brand");
   const model = requireString(input.model, "model");
   const year = requireNumber(input.year, "year");
-  const askingPriceBRL = requireNumber(input.askingPriceBRL, "askingPriceBRL");
+  const { dealPhase, askingPriceBRL, priceNote, repasseColumns } = resolvePricing(input);
   const sourceUrl = requireHttpUrl(requireString(input.sourceUrl, "sourceUrl"), "sourceUrl");
   const sourcePlatform = requireString(input.sourcePlatform, "sourcePlatform");
   const sellerType = input.sellerType;
@@ -283,7 +368,7 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
   const color = input.color?.trim() || "Unknown";
   const photos = input.photos ?? [];
 
-  const inferenceNotes: string[] = [PRICE_SEMANTICS_NOTE];
+  const inferenceNotes: string[] = [priceNote];
   if (!input.fuel) inferenceNotes.push("fuel defaulted to flex (not stated on listing).");
   if (!input.transmission) inferenceNotes.push("transmission defaulted to automatic (not stated on listing).");
   if (!input.city) inferenceNotes.push("city Unknown (not stated on listing).");
@@ -310,10 +395,19 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     bodyType,
     color,
     photos: JSON.stringify(photos),
+    ...repasseColumns,
   };
 
   const editalUrl = input.editalUrl?.trim() || null;
   const auctionDate = input.auctionDate === undefined ? null : input.auctionDate;
+
+  // Prior parseKm bugs concatenated year/engine digits into mileageKm values that
+  // exceed JS safe integers — Prisma then cannot deserialize those rows at all.
+  await prisma.$executeRaw`
+    UPDATE Car
+    SET mileageKm = NULL
+    WHERE mileageKm > 2000000 OR mileageKm < 0
+  `;
 
   const existingByUrl = await prisma.car.findUnique({ where: { sourceUrl } });
 
@@ -397,6 +491,15 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
         );
       }
     };
+
+    // A repasse lead reappearing at auction means the pre-repossession window
+    // closed — the bank took the car. Flip the phase and stamp the signal.
+    if (mergeTarget.dealPhase === "pre_repossession" && dealPhase === "auction") {
+      scalarPatch.dealPhase = "auction";
+      disagreementNotes.push(
+        `Janela de repasse fechada — carro reapareceu em leilão (${sourcePlatform}).`,
+      );
+    }
 
     mergeScalar("mileageKm", "mileage", mileageKm);
     if (plateProvided) mergeScalar("plate", "plate", plate!);
@@ -607,12 +710,22 @@ function parseArgs(argv: string[]): WriteLeadInput {
   const sourcePlatform = get("--source-platform");
   const sellerType = get("--seller-type") as SellerType | undefined;
   const bodyType = get("--body-type") as BodyType | undefined;
+  const dealPhase = get("--deal-phase") as DealPhase | undefined;
 
-  if (!brand || !model || !year || !price || !sourceUrl || !sourcePlatform || !sellerType || !bodyType) {
+  // Repasse leads derive price from entrada + saldo; auction leads require --price.
+  const priceRequired = dealPhase !== "pre_repossession";
+  if (!brand || !model || !year || (priceRequired && !price) || !sourceUrl || !sourcePlatform || !sellerType || !bodyType) {
     throw new WriteLeadError(
-      "Usage: write-lead.ts --brand <b> --model <m> --year <y> --price <n> --source-url <url> --source-platform <p> --seller-type <t> --body-type <bt> [--trim ...] [--mileage <n|null>] [--edital-url <url>]",
+      "Usage: write-lead.ts --brand <b> --model <m> --year <y> --price <n> --source-url <url> --source-platform <p> --seller-type <t> --body-type <bt> [--deal-phase pre_repossession --entry-ask <n> [--outstanding-debt <n|null>] [--installment <n|null>] [--installments-remaining <n|null>] [--seller-contact <c>] [--repasse-urgency <high|medium|low>]] [--trim ...] [--mileage <n|null>] [--edital-url <url>]",
     );
   }
+
+  const optNum = (flag: string): number | null | undefined => {
+    const raw = get(flag);
+    if (raw === undefined) return undefined;
+    if (raw === "null" || raw === "") return null;
+    return Number(raw);
+  };
 
   const mileageRaw = get("--mileage");
   let mileageKm: number | null | undefined;
@@ -632,7 +745,14 @@ function parseArgs(argv: string[]): WriteLeadInput {
     brand,
     model,
     year: Number(year),
-    askingPriceBRL: Number(price),
+    askingPriceBRL: price === undefined ? undefined : Number(price),
+    dealPhase,
+    entryAskBRL: optNum("--entry-ask"),
+    outstandingDebtBRL: optNum("--outstanding-debt"),
+    installmentBRL: optNum("--installment"),
+    installmentsRemaining: optNum("--installments-remaining"),
+    sellerContact: get("--seller-contact"),
+    repasseUrgency: get("--repasse-urgency") as RepasseUrgency | undefined,
     sourceUrl,
     sourcePlatform,
     sellerType,

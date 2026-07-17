@@ -100,8 +100,7 @@ function buildWriteLeadArgs(input: WriteLeadInput): string[] {
     input.model,
     "--year",
     String(input.year),
-    "--price",
-    String(input.askingPriceBRL),
+    ...(input.askingPriceBRL !== undefined ? ["--price", String(input.askingPriceBRL)] : []),
     "--source-url",
     input.sourceUrl,
     "--source-platform",
@@ -112,6 +111,17 @@ function buildWriteLeadArgs(input: WriteLeadInput): string[] {
     input.bodyType,
   ];
 
+  if (input.dealPhase) args.push("--deal-phase", input.dealPhase);
+  const pushOptNum = (flag: string, value: number | null | undefined) => {
+    if (value === null) args.push(flag, "null");
+    else if (value !== undefined) args.push(flag, String(value));
+  };
+  pushOptNum("--entry-ask", input.entryAskBRL);
+  pushOptNum("--outstanding-debt", input.outstandingDebtBRL);
+  pushOptNum("--installment", input.installmentBRL);
+  pushOptNum("--installments-remaining", input.installmentsRemaining);
+  if (input.sellerContact) args.push("--seller-contact", input.sellerContact);
+  if (input.repasseUrgency) args.push("--repasse-urgency", input.repasseUrgency);
   if (input.trim) args.push("--trim", input.trim);
   if (input.mileageKm === null) args.push("--mileage", "null");
   else if (input.mileageKm !== undefined) args.push("--mileage", String(input.mileageKm));

@@ -12,7 +12,7 @@ describe("listTargets", () => {
         id, brand: "Fiat", model: "Argo", trim: "Drive", year: 2021, modelYear: 2021,
         mileageKm: 1000, askingPriceBRL: 50000, city: "SP", state: "SP",
         sellerType: "owner", fuel: "flex", transmission: "manual", bodyType: "hatch",
-        color: "White", sourceUrl: "https://x", sourcePlatform: "OLX", notes: "",
+        color: "White", sourceUrl: `https://example.com/${id}`, sourcePlatform: "OLX", notes: "",
         photos: "[]", pipelineStage: stage, fipeValueBRL: 50000,
       },
     });

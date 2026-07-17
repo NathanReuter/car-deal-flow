@@ -16,6 +16,7 @@
   --danger: #dc2626;
   --danger-bg: #fef2f2;
   --warning: #d97706;
+  --warning-bg: #fffbeb;
 }
 
 @theme inline {
@@ -50,6 +51,7 @@
     --danger: #f87171;
     --danger-bg: #450a0a;
     --warning: #fbbf24;
+    --warning-bg: #451a03;
   }
 }
 

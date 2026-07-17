@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { findFipeValue, FipeError } from "@/lib/integrations/fipe";
+import type { FuelType } from "@/lib/types";
 
 export type FipeSyncResult =
   | { ok: true; valueBRL: number; matchedModel: string; referenceMonth: string }
@@ -13,7 +14,13 @@ export async function syncFipeValue(carId: string): Promise<FipeSyncResult> {
   if (!car) return { ok: false, error: "Car not found." };
 
   try {
-    const match = await findFipeValue({ brand: car.brand, model: car.model, year: car.year, modelYear: car.modelYear });
+    const match = await findFipeValue({
+      brand: car.brand,
+      model: car.model,
+      year: car.year,
+      modelYear: car.modelYear,
+      fuel: car.fuel as FuelType,
+    });
     await prisma.car.update({ where: { id: carId }, data: { fipeValueBRL: match.valueBRL } });
     revalidatePath(`/cars/${carId}`);
     revalidatePath("/");

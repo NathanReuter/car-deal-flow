@@ -20,6 +20,8 @@ export function formatFipe(v: number | null): string {
 }
 
 export function formatPct(v: number, opts?: { signed?: boolean }): string {
-  const sign = opts?.signed && v > 0 ? "+" : "";
-  return `${sign}${v.toFixed(1)}%`;
+  const fixed = v.toFixed(1);
+  const clean = fixed === "-0.0" ? "0.0" : fixed;
+  const sign = opts?.signed && Number(clean) > 0 ? "+" : "";
+  return `${sign}${clean}%`;
 }

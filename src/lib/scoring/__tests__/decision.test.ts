@@ -40,4 +40,11 @@ describe("computeDecision", () => {
     expect(d.manualOverrideApplied).toBe(true);
     expect(d.verdict).toBe("safe_buy");
   });
+  it("override wins over the severe-risk gate without a contradictory reasoning line", () => {
+    const gated = risk({ items: [{ key: "judicial_restriction", status: "failed", severity: "severe", notes: "" }], score: 10 });
+    const d = computeDecision(car({ manualVerdictOverride: "safe_buy" }), goal, gated, cond);
+    expect(d.verdict).toBe("safe_buy");
+    expect(d.severeRiskGate).toBe(true);
+    expect(d.reasoning.some((r) => r.includes("gates this to Avoid"))).toBe(false);
+  });
 });

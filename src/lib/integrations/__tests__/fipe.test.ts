@@ -30,4 +30,25 @@ describe("findFipeValue", () => {
     expect(r.matchedModel).toContain("T-Cross");
     expect(r.referenceMonth).toMatch(/julho/);
   });
+
+  it("fails closed when multiple fuel variants share the year and fuel can't disambiguate", async () => {
+    mockFetchSequence([
+      [{ codigo: "59", nome: "VW - VolksWagen" }],
+      { modelos: [{ codigo: "5940", nome: "T-Cross" }] },
+      [{ codigo: "2022-1", nome: "2022 Gasolina" }, { codigo: "2022-3", nome: "2022 Diesel" }],
+    ]);
+    await expect(findFipeValue({ brand: "Volkswagen", model: "T-Cross", year: 2022 }))
+      .rejects.toBeInstanceOf(FipeError);
+  });
+
+  it("disambiguates multiple year variants by fuel", async () => {
+    mockFetchSequence([
+      [{ codigo: "59", nome: "VW - VolksWagen" }],
+      { modelos: [{ codigo: "5940", nome: "T-Cross" }] },
+      [{ codigo: "2022-1", nome: "2022 Gasolina" }, { codigo: "2022-3", nome: "2022 Diesel" }],
+      { Valor: "R$ 130.000,00", Modelo: "T-Cross", MesReferencia: "julho de 2026" },
+    ]);
+    const r = await findFipeValue({ brand: "Volkswagen", model: "T-Cross", year: 2022, fuel: "diesel" });
+    expect(r.valueBRL).toBe(130000);
+  });
 });

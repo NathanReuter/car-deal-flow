@@ -28,7 +28,8 @@ export function computeMarketAssessment(car: Car, fipe: number | null): MarketAs
   }
 
   const premium = ((car.askingPriceBRL - fipe) / fipe) * 100;
-  const verdict = premium <= -FAIR_BAND * 100 ? "under_market" : premium > FAIR_BAND * 100 ? "overpriced" : "fair";
+  // Symmetric bands: |premium| within ±7% is "fair"; strictly beyond is under/over.
+  const verdict = premium < -FAIR_BAND * 100 ? "under_market" : premium > FAIR_BAND * 100 ? "overpriced" : "fair";
 
   return {
     ...base,

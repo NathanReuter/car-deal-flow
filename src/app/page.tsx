@@ -7,7 +7,10 @@ export default async function Home() {
   let bundles;
   try {
     bundles = await getAllBundles();
-  } catch {
+  } catch (e) {
+    // Only the "no active goal" case gets the friendly seed hint; real failures
+    // (DB down, corrupt row) must not masquerade as an unconfigured goal.
+    if (!(e instanceof Error && e.message.includes("active buying goal"))) throw e;
     return (
       <main className="mx-auto max-w-2xl p-8">
         <h1 className="text-xl font-semibold text-text-primary">Car Deal Flow</h1>

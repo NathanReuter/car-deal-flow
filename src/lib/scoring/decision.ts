@@ -56,7 +56,9 @@ export function computeDecision(car: Car, goal: BuyingGoal, risk: RiskCheck, con
 
   const reasoning: string[] = [];
   if (manualOverrideApplied) reasoning.push(`Manual override: ${car.overrideReason ?? "set by owner"}.`);
-  if (severeRiskGate) reasoning.push("Severe documentation risk gates this to Avoid regardless of score.");
+  // Skip the gate narrative when an override is applied, so the explanation
+  // isn't self-contradictory (override verdict + "gated to Avoid").
+  if (severeRiskGate && !manualOverrideApplied) reasoning.push("Severe documentation risk gates this to Avoid regardless of score.");
   reasoning.push(`Goal fit ${goalFitScore}, risk ${documentationRiskScore}, condition ${conditionScore}, resale ${resaleLiquidityScore}.`);
   reasoning.push(valueScore === null ? "FIPE not synced — value excluded from the blend." : `Value score ${valueScore} (${market.verdict.replaceAll("_", " ")}).`);
 

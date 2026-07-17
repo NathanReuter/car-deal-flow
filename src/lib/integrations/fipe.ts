@@ -1,4 +1,7 @@
+import type { FuelType } from "@/lib/types";
+
 const BASE = "https://parallelum.com.br/fipe/api/v2/cars";
+const TIMEOUT_MS = 10_000;
 
 export interface FipeMatch { valueBRL: number; matchedModel: string; referenceMonth: string }
 export class FipeError extends Error {
@@ -8,10 +11,18 @@ export class FipeError extends Error {
 interface Ref { codigo: string; nome: string }
 
 const norm = (s: string) =>
-  s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+  s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+
+const FUEL_TOKEN: Record<FuelType, RegExp> = {
+  flex: /flex/i,
+  gasoline: /gasolin/i,
+  diesel: /diesel/i,
+  hybrid: /h[íi]brid/i,
+  electric: /el[ée]tric/i,
+};
 
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) throw new FipeError(`FIPE request failed (${res.status}) for ${url}`);
   return (await res.json()) as T;
 }
@@ -27,14 +38,20 @@ function pickModel(models: Ref[], model: string): Ref {
   const target = norm(model);
   const matches = models.filter((m) => norm(m.nome).includes(target));
   if (matches.length === 0) throw new FipeError(`No FIPE model matches "${model}"`);
-  // Prefer the shortest name (least trim noise) to reduce ambiguity.
+  // Documented product decision: resolve trim ambiguity to the shortest (base) name.
   return matches.sort((a, b) => a.nome.length - b.nome.length)[0];
 }
 
-function pickYear(years: Ref[], year: number): Ref {
-  const hit = years.find((y) => y.codigo.startsWith(String(year)) || y.nome.startsWith(String(year)));
-  if (!hit) throw new FipeError(`No FIPE year entry for ${year}`);
-  return hit;
+function pickYear(years: Ref[], year: number, fuel?: FuelType): Ref {
+  const matches = years.filter((y) => y.codigo.startsWith(String(year)) || y.nome.startsWith(String(year)));
+  if (matches.length === 0) throw new FipeError(`No FIPE year entry for ${year}`);
+  if (matches.length === 1) return matches[0];
+  // Multiple fuel variants share the year — disambiguate by fuel, else fail closed.
+  if (fuel) {
+    const byFuel = matches.filter((m) => FUEL_TOKEN[fuel].test(m.nome));
+    if (byFuel.length === 1) return byFuel[0];
+  }
+  throw new FipeError(`Ambiguous FIPE year entries for ${year} (${matches.length} fuel variants) — cannot resolve confidently`);
 }
 
 function parseBRL(v: string): number {
@@ -45,7 +62,7 @@ function parseBRL(v: string): number {
 }
 
 export async function findFipeValue(
-  input: { brand: string; model: string; year: number; modelYear?: number },
+  input: { brand: string; model: string; year: number; modelYear?: number; fuel?: FuelType },
 ): Promise<FipeMatch> {
   const brands = await getJson<Ref[]>(`${BASE}/brands`);
   const brand = pickBrand(brands, input.brand);
@@ -55,7 +72,7 @@ export async function findFipeValue(
   const model = pickModel(models, input.model);
 
   const years = await getJson<Ref[]>(`${BASE}/brands/${brand.codigo}/models/${model.codigo}/years`);
-  const year = pickYear(years, input.modelYear ?? input.year);
+  const year = pickYear(years, input.modelYear ?? input.year, input.fuel);
 
   const detail = await getJson<{ Valor: string; Modelo: string; MesReferencia: string }>(
     `${BASE}/brands/${brand.codigo}/models/${model.codigo}/years/${year.codigo}`,

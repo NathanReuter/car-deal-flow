@@ -7,7 +7,7 @@ const badge = cva("inline-flex items-center rounded-full border px-2 py-0.5 text
     variant: {
       neutral: "border-transparent bg-surface-hover text-text-secondary",
       success: "border-transparent bg-[var(--success-bg)] text-[var(--success)]",
-      warning: "border-transparent bg-[var(--danger-bg)] text-[var(--warning)]",
+      warning: "border-transparent bg-[var(--warning-bg)] text-[var(--warning)]",
       danger: "border-transparent bg-[var(--danger-bg)] text-[var(--danger)]",
       outline: "border-border text-text-secondary",
     },

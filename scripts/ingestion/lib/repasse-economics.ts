@@ -48,7 +48,7 @@ function extractKeyedAmount(
     const value = parseAmount(m[m.length - 2] as string, m[m.length - 1] as string | undefined);
     if (value !== null && inRange(value, range)) values.add(value);
   }
-  return values.size === 1 ? [...values][0] : null;
+  return single(values);
 }
 
 const ENTRY_KEY = /(?:entrada|[áa]gio)/;

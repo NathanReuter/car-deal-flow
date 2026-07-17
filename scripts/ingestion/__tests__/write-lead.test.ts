@@ -484,6 +484,52 @@ describe("writeLead repasse (pre_repossession)", () => {
     ).rejects.toThrow(WriteLeadError);
   });
 
+  it("rejects a supplied askingPriceBRL on a repasse lead (price is derived)", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...repasseInput,
+        sourceUrl: "https://olx.com.br/anuncio/argo-repasse-5",
+        askingPriceBRL: 57000,
+        entryAskBRL: 15000,
+        outstandingDebtBRL: 42000,
+      }),
+    ).rejects.toThrow(/derive/i);
+  });
+
+  it("rejects an invalid repasseUrgency value", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...repasseInput,
+        sourceUrl: "https://olx.com.br/anuncio/argo-repasse-6",
+        entryAskBRL: 15000,
+        repasseUrgency: "banana" as never,
+      }),
+    ).rejects.toThrow(/repasseUrgency/);
+  });
+
+  it("refreshes repasse economics when the same ad URL is re-harvested", async () => {
+    const url = "https://olx.com.br/anuncio/argo-repasse-7";
+    const first = await writeLead(ctx.prisma, {
+      ...repasseInput,
+      sourceUrl: url,
+      entryAskBRL: 15000,
+      outstandingDebtBRL: null,
+    });
+
+    const second = await writeLead(ctx.prisma, {
+      ...repasseInput,
+      sourceUrl: url,
+      entryAskBRL: 14000,
+      outstandingDebtBRL: 40000,
+    });
+
+    expect(second.carId).toBe(first.carId);
+    const car = await ctx.prisma.car.findUnique({ where: { id: first.carId } });
+    expect(car!.entryAskBRL).toBe(14000);
+    expect(car!.outstandingDebtBRL).toBe(40000);
+    expect(car!.askingPriceBRL).toBe(54000);
+  });
+
   it("merges a later auction write into an existing repasse car and stamps window closed", async () => {
     const first = await writeLead(ctx.prisma, {
       ...repasseInput,

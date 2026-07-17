@@ -164,6 +164,15 @@ function resolvePricing(input: WriteLeadInput): {
   repasseColumns: Partial<RepasseColumns>;
 } {
   const dealPhase = input.dealPhase ?? "auction";
+  if (dealPhase !== "auction" && dealPhase !== "pre_repossession") {
+    throw new WriteLeadError(`Invalid dealPhase: ${String(dealPhase)}`);
+  }
+  if (
+    input.repasseUrgency != null &&
+    !["high", "medium", "low"].includes(input.repasseUrgency)
+  ) {
+    throw new WriteLeadError(`Invalid repasseUrgency: ${String(input.repasseUrgency)}`);
+  }
 
   if (dealPhase !== "pre_repossession") {
     return {
@@ -172,6 +181,12 @@ function resolvePricing(input: WriteLeadInput): {
       priceNote: PRICE_SEMANTICS_NOTE,
       repasseColumns: { dealPhase },
     };
+  }
+
+  if (input.askingPriceBRL !== undefined) {
+    throw new WriteLeadError(
+      "Repasse leads derive askingPriceBRL from entrada + saldo — do not supply it.",
+    );
   }
 
   const entry = optionalMoney(input.entryAskBRL, "entryAskBRL");

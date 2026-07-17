@@ -1,6 +1,5 @@
-import { existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
 import {
   createHarvestSummary,
@@ -11,8 +10,22 @@ import { harvestVipLots } from "./vip-harvest";
 import { harvestBidchainLots } from "./bidchain-harvest";
 import { harvestMglLots } from "./mgl-harvest";
 import { harvestSantanderLots } from "./santander-harvest";
+import { harvestOlxAds } from "./olx-harvest";
 
-export type HarvestSource = "bradesco" | "vip" | "bidchain" | "mgl" | "santander";
+export type HarvestSource = "bradesco" | "vip" | "bidchain" | "mgl" | "santander" | "olx";
+
+export type HarvestPhase = "pre" | "auction" | "all";
+
+/** Sources by deal phase; "olx" harvests pre-repossession repasse ads. */
+export const PHASE_SOURCES: Record<Exclude<HarvestPhase, "all">, HarvestSource[]> = {
+  auction: ["bradesco", "vip", "bidchain", "mgl", "santander"],
+  pre: ["olx"],
+};
+
+export function sourcesForPhase(phase: HarvestPhase): HarvestSource[] {
+  if (phase === "all") return [...PHASE_SOURCES.auction, ...PHASE_SOURCES.pre];
+  return [...PHASE_SOURCES[phase]];
+}
 
 export type CombinedHarvestSummary = {
   sources: Record<string, HarvestSummary | FailedHarvestSummary>;
@@ -27,7 +40,7 @@ export type FailedHarvestSummary = HarvestSummary & {
   failureReason: string;
 };
 
-const ALL_SOURCES: HarvestSource[] = ["bradesco", "vip", "bidchain", "mgl", "santander"];
+const ALL_SOURCES: HarvestSource[] = sourcesForPhase("all");
 const VALID_SOURCES = new Set<string>(ALL_SOURCES);
 
 export const SANTANDER_LOTS_PATH = "/tmp/santander-lots.json";
@@ -40,35 +53,51 @@ export function parseHarvestSource(raw: string): HarvestSource {
   return raw as HarvestSource;
 }
 
+export function parseHarvestPhase(raw: string): HarvestPhase {
+  if (raw !== "pre" && raw !== "auction" && raw !== "all") {
+    throw new Error(`Invalid --phase "${raw}". Use one of: pre, auction, all`);
+  }
+  return raw;
+}
+
 function parseArgs(argv: string[]): {
   source?: HarvestSource;
+  phase?: HarvestPhase;
   all: boolean;
   dryRun: boolean;
   limit?: number;
   excludeInsurer: boolean;
   noGoalFilter: boolean;
+  noCleanup: boolean;
+  skipLinkCheck: boolean;
   summaryOut: string;
 } {
   let source: HarvestSource | undefined;
+  let phase: HarvestPhase | undefined;
   let all = false;
   let dryRun = false;
   let limit: number | undefined;
   let excludeInsurer = false;
   let noGoalFilter = false;
+  let noCleanup = false;
+  let skipLinkCheck = false;
   let summaryOut = "/tmp/harvest-summary.json";
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--source" && argv[i + 1]) source = parseHarvestSource(argv[++i]!);
+    else if (arg === "--phase" && argv[i + 1]) phase = parseHarvestPhase(argv[++i]!);
     else if (arg === "--all") all = true;
     else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--limit" && argv[i + 1]) limit = Number(argv[++i]);
     else if (arg === "--exclude-insurer") excludeInsurer = true;
     else if (arg === "--no-goal-filter") noGoalFilter = true;
+    else if (arg === "--no-cleanup") noCleanup = true;
+    else if (arg === "--skip-link-check") skipLinkCheck = true;
     else if (arg === "--summary-out" && argv[i + 1]) summaryOut = argv[++i]!;
   }
 
-  return { source, all, dryRun, limit, excludeInsurer, noGoalFilter, summaryOut };
+  return { source, phase, all, dryRun, limit, excludeInsurer, noGoalFilter, noCleanup, skipLinkCheck, summaryOut };
 }
 
 function runStep(label: string, args: string[]): void {
@@ -90,21 +119,20 @@ function runGoalFilter(): void {
   );
 }
 
-function ensureSantanderLotsFile(): void {
-  if (existsSync(SANTANDER_LOTS_PATH)) return;
-  if (existsSync(SANTANDER_HTML_CAPTURE)) {
-    runStep("santander-list", [
-      "scripts/ingestion/santander-list.ts",
-      "--html",
-      SANTANDER_HTML_CAPTURE,
-      "--out",
-      SANTANDER_LOTS_PATH,
-    ]);
-    return;
-  }
-  throw new Error(
-    `Missing ${SANTANDER_LOTS_PATH}. Run santander-probe.ts, save listing HTML to ${SANTANDER_HTML_CAPTURE}, then santander-list.ts --html ...`,
-  );
+/** Soft-expire dead inventory (auction dates passed, then broken source links).
+ * Runs once at the end of a harvest, after goal triage. Independent of goal
+ * fit, so it runs even when --no-goal-filter is set. The broken-link sweep
+ * fetches every new_lead/parked lot's URL sequentially, so --skip-link-check
+ * lets a fast/incremental harvest skip it; it stays on by default because
+ * null-date sources (BIDchain/MGL/Santander) rely on it as their only cleanup. */
+function runCleanup(includeBrokenLinks: boolean): void {
+  const args = ["scripts/ingestion/post-harvest-cleanup.ts"];
+  if (!includeBrokenLinks) args.push("--skip-broken-links");
+  spawnSync("./node_modules/.bin/tsx", args, {
+    encoding: "utf8",
+    cwd: process.cwd(),
+    stdio: "inherit",
+  });
 }
 
 export async function runHarvestSource(
@@ -196,11 +224,29 @@ export async function runHarvestSource(
       });
     }
     case "santander": {
-      ensureSantanderLotsFile();
+      runStep("santander-list", [
+        "scripts/ingestion/santander-list.ts",
+        "--out",
+        SANTANDER_LOTS_PATH,
+      ]);
       return harvestSantanderLots({
         lotsPath: SANTANDER_LOTS_PATH,
         fetchDir: "/tmp/santander-harvest/lots",
         summaryOut: "/tmp/santander-harvest/write-summary.json",
+        skipExisting: true,
+        ...common,
+      });
+    }
+    case "olx": {
+      runStep("olx-list", [
+        "scripts/ingestion/olx-list.ts",
+        "--out",
+        "/tmp/olx-harvest/list.json",
+      ]);
+      return harvestOlxAds({
+        listPath: "/tmp/olx-harvest/list.json",
+        fetchDir: "/tmp/olx-harvest/details",
+        summaryOut: "/tmp/olx-harvest/write-summary.json",
         skipExisting: true,
         ...common,
       });
@@ -225,6 +271,8 @@ export async function runHarvest(options: {
   limit?: number;
   excludeInsurer?: boolean;
   applyGoalFilter?: boolean;
+  cleanup?: boolean;
+  checkBrokenLinks?: boolean;
   summaryOut?: string;
 }): Promise<CombinedHarvestSummary> {
   const startedAt = new Date().toISOString();
@@ -260,6 +308,12 @@ export async function runHarvest(options: {
     runGoalFilter();
   }
 
+  // Cleanup runs once after all sources + goal triage. It never writes on a
+  // dry run and is independent of goal fit, so --no-goal-filter still cleans up.
+  if (options.cleanup !== false && !options.dryRun) {
+    runCleanup(options.checkBrokenLinks !== false);
+  }
+
   const combined: CombinedHarvestSummary = {
     sources,
     totalWritten,
@@ -277,9 +331,15 @@ export async function runHarvest(options: {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const sources = args.all ? ALL_SOURCES : args.source ? [args.source] : [];
+  const sources = args.all
+    ? ALL_SOURCES
+    : args.phase
+      ? sourcesForPhase(args.phase)
+      : args.source
+        ? [args.source]
+        : [];
   if (sources.length === 0) {
-    throw new Error("Specify --source <name> or --all");
+    throw new Error("Specify --source <name>, --phase <pre|auction|all>, or --all");
   }
 
   const combined = await runHarvest({
@@ -288,6 +348,8 @@ async function main() {
     limit: args.limit,
     excludeInsurer: args.excludeInsurer,
     applyGoalFilter: !args.noGoalFilter,
+    cleanup: !args.noCleanup,
+    checkBrokenLinks: !args.skipLinkCheck,
     summaryOut: args.summaryOut,
   });
 

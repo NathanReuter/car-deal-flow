@@ -48,5 +48,8 @@ next-env.d.ts
 /*.db
 /*.db-journal
 
+# local git worktrees
+.worktrees/
+
 # local browser profile (session cookies for the risk-check agent skill)
 /.claude/browser-profile/

@@ -7,8 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { VerdictBadge } from "@/components/domain/verdict-badge";
+import { PhaseBadge } from "@/components/domain/phase-badge";
+import { UrgencyBadge } from "@/components/domain/urgency-badge";
 import { formatBRL, formatKm } from "@/lib/format";
-import { PIPELINE_STAGES, SELLER_TYPE_LABEL, VERDICT_LABEL, type Verdict } from "@/lib/types";
+import { DEAL_PHASE_LABEL, PIPELINE_STAGES, SELLER_TYPE_LABEL, VERDICT_LABEL, type DealPhase, type Verdict } from "@/lib/types";
+import { matchesPhase, type PhaseFilter } from "@/lib/repasse-display";
 import type { CarBundle } from "@/lib/aggregate";
 
 type SortKey = "score" | "price" | "mileage" | "year";
@@ -17,6 +20,7 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState<string>("all");
   const [stage, setStage] = useState<string>("all");
+  const [phase, setPhase] = useState<PhaseFilter>("all");
   const [verdict, setVerdict] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("score");
 
@@ -29,6 +33,7 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
       if (brand !== "all" && b.car.brand !== brand) return false;
       if (stage === "all" && b.car.pipelineStage === "expired") return false;
       if (stage !== "all" && b.car.pipelineStage !== stage) return false;
+      if (!matchesPhase(b.car, phase)) return false;
       if (verdict !== "all" && b.decision.verdict !== verdict) return false;
       return true;
     });
@@ -47,7 +52,7 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
     });
 
     return list;
-  }, [bundles, search, brand, stage, verdict, sortKey]);
+  }, [bundles, search, brand, stage, phase, verdict, sortKey]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -75,6 +80,16 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
           <SelectContent>
             <SelectItem value="all">All stages</SelectItem>
             {PIPELINE_STAGES.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        <Select value={phase} onValueChange={(v) => setPhase(v as PhaseFilter)}>
+          <SelectTrigger className="w-full sm:w-44"><SelectValue placeholder="Phase" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All phases</SelectItem>
+            {(Object.keys(DEAL_PHASE_LABEL) as DealPhase[]).map((p) => (
+              <SelectItem key={p} value={p}>{DEAL_PHASE_LABEL[p]}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
@@ -108,6 +123,7 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
             <TH>Year / KM</TH>
             <TH>Price</TH>
             <TH>Location</TH>
+            <TH>Phase</TH>
             <TH>Seller</TH>
             <TH>Stage</TH>
             <TH>Verdict</TH>
@@ -128,6 +144,14 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
               </TD>
               <TD className="font-medium">{formatBRL(b.car.askingPriceBRL)}</TD>
               <TD className="text-text-secondary">{b.car.city}/{b.car.state}</TD>
+              <TD>
+                <div className="flex flex-wrap items-center gap-1">
+                  <PhaseBadge dealPhase={b.car.dealPhase} />
+                  {b.car.dealPhase === "pre_repossession" && (
+                    <UrgencyBadge urgency={b.car.repasse?.urgency} />
+                  )}
+                </div>
+              </TD>
               <TD className="text-text-secondary">{SELLER_TYPE_LABEL[b.car.sellerType]}</TD>
               <TD className="text-text-secondary">{PIPELINE_STAGES.find((s) => s.id === b.car.pipelineStage)?.label}</TD>
               <TD><VerdictBadge verdict={b.decision.verdict} /></TD>
@@ -136,7 +160,7 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
           ))}
           {filtered.length === 0 && (
             <TR>
-              <TD colSpan={8} className="py-8 text-center text-text-muted">
+              <TD colSpan={9} className="py-8 text-center text-text-muted">
                 No vehicles match these filters.
               </TD>
             </TR>

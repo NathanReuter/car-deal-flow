@@ -53,3 +53,6 @@ next-env.d.ts
 
 # local browser profile (session cookies for the risk-check agent skill)
 /.claude/browser-profile/
+
+# cadence logs
+logs/

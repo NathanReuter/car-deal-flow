@@ -16,7 +16,7 @@
 - **Phase 2 — OLX: DONE.** `olx-list.ts` / `olx-parse.ts` / `olx-harvest.ts` shipped.
 - **Phase 3 — Orchestrator + skill: DONE.** `harvest.ts` `--phase` selector, npm scripts, `harvest-repasse` skill.
 - **Phase 4 — Verification gate: DONE.** `list-targets --phase pre`, `write-result` phase-1 outcome mapping.
-- **Phase 5 — UI surfacing: IN PROGRESS.** Table badges + phase filter and the detail economics block are the remaining work.
+- **Phase 5 — UI surfacing: DONE.** Phase/urgency badges + phase filter in the cars table and the repasse economics block on the detail page, verified via a Playwright render smoke test (2026-07-18).
 
 ## Global Constraints (carried over from Tier 1, all still binding)
 
@@ -188,7 +188,7 @@ For `dealPhase = "pre_repossession"`:
 
 ### Phase 5: UI surfacing
 
-- [ ] **Task 5.1: Table badges + phase filter**
+- [x] **Task 5.1: Table badges + phase filter**
   - **Description:** `cars-table-view.tsx`: phase badge (Pré-apreensão / Leilão) + urgency badge (high=red, medium=amber, low=neutral); phase filter alongside existing filters. `aggregate.ts` already maps fields from 0.1.
   - **Acceptance criteria:**
     - [ ] Auction rows unchanged visually except the phase column/badge; repasse rows show urgency.
@@ -196,7 +196,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** dev-server render check; existing component tests green.
   - **Dependencies:** 0.1. **Files:** `src/components/cars/cars-table-view.tsx`. **Scope:** S.
 
-- [ ] **Task 5.2: Detail economics block**
+- [x] **Task 5.2: Detail economics block**
   - **Description:** `car-detail-tabs.tsx`: for pre_repossession cars, a "Repasse" block: entrada, saldo devedor, parcela × restantes, contato, urgency, with "não informado" for nulls.
   - **Acceptance criteria:** block absent for auction cars; nulls render as "não informado", never 0.
   - **Verification:** dev-server render of one repasse + one auction car.

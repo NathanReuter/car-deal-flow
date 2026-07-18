@@ -19,10 +19,10 @@ const MIN_YEAR = 2021;
 
 export function totalCostBRL(car: DealCar): number | null {
   if (car.dealPhase !== "pre_repossession") return car.askingPriceBRL;
-  if (car.installmentBRL && car.installmentsRemaining) {
+  if (car.installmentBRL != null && car.installmentsRemaining != null) {
     return car.askingPriceBRL + car.installmentBRL * car.installmentsRemaining;
   }
-  if (car.outstandingDebtBRL) return car.askingPriceBRL + car.outstandingDebtBRL;
+  if (car.outstandingDebtBRL != null) return car.askingPriceBRL + car.outstandingDebtBRL;
   return null; // repasse with unknown debt cannot be priced honestly
 }
 
@@ -30,7 +30,7 @@ export function isSpecialDeal(car: DealCar): boolean {
   const blob = `${car.model} ${car.trim} ${car.sourceUrl}`;
   if (!TARGET_MODEL_RE.test(blob)) return false;
   if (car.year < MIN_YEAR) return false;
-  if (!car.fipeValueBRL) return false;
+  if (car.fipeValueBRL == null || car.fipeValueBRL <= 0) return false;
   const total = totalCostBRL(car);
   if (total === null) return false;
   return total <= car.fipeValueBRL * SPECIAL_DEAL_MAX_PCT_OF_FIPE;

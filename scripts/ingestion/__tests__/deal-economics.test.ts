@@ -24,6 +24,11 @@ describe("totalCostBRL", () => {
     expect(totalCostBRL(c)).toBe(65000 + 66000);
   });
 
+  it("treats zero remaining installments as fully paid, not unknown", () => {
+    const paidOff = { ...base, dealPhase: "pre_repossession", installmentBRL: 1500, installmentsRemaining: 0 };
+    expect(totalCostBRL(paidOff)).toBe(base.askingPriceBRL);
+  });
+
   it("falls back to outstanding debt, else null for repasse", () => {
     const debt = { ...base, dealPhase: "pre_repossession", outstandingDebtBRL: 40000 };
     expect(totalCostBRL(debt)).toBe(73000);

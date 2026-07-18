@@ -23,4 +23,26 @@ describe("installCachedFetch", () => {
     expect(globalThis.fetch).toBe(spy);
     globalThis.fetch = realFetch;
   });
+
+  it("evicts a rejected fetch so the next call retries", async () => {
+    const realFetch = globalThis.fetch;
+    let calls = 0;
+    const spy = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("network down");
+      return new Response(JSON.stringify({ ok: true }));
+    });
+    globalThis.fetch = spy as unknown as typeof fetch;
+    uninstall = installCachedFetch();
+
+    await expect(fetch("https://fipe.test/brands")).rejects.toThrow("network down");
+    const retried = await (await fetch("https://fipe.test/brands")).json();
+
+    expect(retried).toEqual({ ok: true });
+    expect(spy).toHaveBeenCalledTimes(2);
+
+    uninstall();
+    uninstall = undefined;
+    globalThis.fetch = realFetch;
+  });
 });

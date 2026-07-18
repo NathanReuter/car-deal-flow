@@ -14,7 +14,9 @@ export function installCachedFetch(): () => void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const key = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (!cache.has(key)) {
-      cache.set(key, previous(input, init).then((r) => r.clone()));
+      const entry = previous(input, init).then((r) => r.clone());
+      entry.catch(() => cache.delete(key));
+      cache.set(key, entry);
     }
     return (await cache.get(key)!).clone();
   }) as typeof fetch;

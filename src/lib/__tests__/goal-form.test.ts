@@ -143,6 +143,25 @@ describe("validateGoalInput", () => {
     if (!result.ok) return;
     expect(result.value.preferredBodyTypes).toEqual(["suv", "sedan"]);
   });
+
+  it("treats the string 'false' as false for familySpaceRequired", () => {
+    // Boolean("false") is true in JS — a crafted POST must not flip the flag on.
+    const result = validateGoalInput(
+      baseInput({ familySpaceRequired: "false" as unknown as boolean }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.familySpaceRequired).toBe(false);
+  });
+
+  it("accepts boolean true and the string 'true' for familySpaceRequired", () => {
+    for (const familySpaceRequired of [true, "true" as unknown as boolean]) {
+      const result = validateGoalInput(baseInput({ familySpaceRequired }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.familySpaceRequired).toBe(true);
+    }
+  });
 });
 
 describe("serializeGoalForDb", () => {

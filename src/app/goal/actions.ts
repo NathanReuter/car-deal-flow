@@ -8,13 +8,14 @@ import {
   type GoalFieldErrors,
   type GoalFormInput,
 } from "@/lib/goal-form";
+import { expireStaleLeads } from "../../../scripts/ingestion/expire-stale-leads";
 
 export type UpdateGoalResult =
   | { ok: true }
   | { ok: false; errors?: GoalFieldErrors; error?: string };
 
 // Persists edits to the active buying goal. Validation mirrors the client so a
-// direct POST cannot bypass it. Revalidates the pipeline so cars re-score.
+// direct POST cannot bypass it. Revalidates the layout so every page re-scores.
 export async function updateGoal(input: GoalFormInput): Promise<UpdateGoalResult> {
   const result = validateGoalInput(input);
   if (!result.ok) {
@@ -38,7 +39,15 @@ export async function updateGoal(input: GoalFormInput): Promise<UpdateGoalResult
     return { ok: false, error: "Could not save the goal. Please try again." };
   }
 
-  revalidatePath("/");
-  revalidatePath("/goal");
+  // Changing the goal re-triages inventory, so expire lots whose auction date
+  // has already passed. Best-effort: a cleanup failure must not fail the save.
+  try {
+    await expireStaleLeads(prisma);
+  } catch (error) {
+    console.error("post-goal expiry sweep failed (non-fatal):", error);
+  }
+
+  // Goal fit affects scoring across every page under the root layout.
+  revalidatePath("/", "layout");
   return { ok: true };
 }

@@ -11,7 +11,8 @@ export interface GoalFormInput {
   maxMileageKm: number | string;
   fuelEconomyThresholdKmL: number | string;
   minResaleLiquidityScore: number | string;
-  familySpaceRequired: boolean;
+  // May arrive as a string from a crafted POST; never use Boolean() on it.
+  familySpaceRequired: boolean | string;
   requiredFeatures: string[];
   preferredBodyTypes: string[];
   preferredBrands: string[];
@@ -112,6 +113,12 @@ function integerError(value: number, min: number, max: number, message: string):
   return undefined;
 }
 
+/** Checkbox / form boolean that must not treat the string "false" as truthy. */
+function toBooleanFlag(value: unknown): boolean {
+  if (value === true || value === "true" || value === 1 || value === "1") return true;
+  return false;
+}
+
 export function validateGoalInput(input: GoalFormInput): GoalValidationResult {
   const errors: GoalFieldErrors = {};
 
@@ -176,7 +183,7 @@ export function validateGoalInput(input: GoalFormInput): GoalValidationResult {
       maxMileageKm,
       fuelEconomyThresholdKmL,
       minResaleLiquidityScore,
-      familySpaceRequired: Boolean(input.familySpaceRequired),
+      familySpaceRequired: toBooleanFlag(input.familySpaceRequired),
       requiredFeatures: cleanList(input.requiredFeatures),
       preferredBodyTypes: preferredBodyTypes as BodyType[],
       preferredBrands: cleanList(input.preferredBrands),

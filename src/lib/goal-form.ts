@@ -40,6 +40,40 @@ export type GoalValidationResult =
   | { ok: true; value: NormalizedGoal }
   | { ok: false; errors: GoalFieldErrors };
 
+// Persistence shape for prisma.buyingGoal.update — array fields are JSON strings,
+// mirroring how aggregate.ts's toBuyingGoal parses them back out.
+export interface GoalDbData {
+  name: string;
+  budgetMinBRL: number;
+  budgetMaxBRL: number;
+  minYear: number;
+  maxMileageKm: number;
+  fuelEconomyThresholdKmL: number;
+  minResaleLiquidityScore: number;
+  familySpaceRequired: boolean;
+  requiredFeatures: string;
+  preferredBodyTypes: string;
+  preferredBrands: string;
+  excludedBrandsModels: string;
+}
+
+export function serializeGoalForDb(goal: NormalizedGoal): GoalDbData {
+  return {
+    name: goal.name,
+    budgetMinBRL: goal.budgetMinBRL,
+    budgetMaxBRL: goal.budgetMaxBRL,
+    minYear: goal.minYear,
+    maxMileageKm: goal.maxMileageKm,
+    fuelEconomyThresholdKmL: goal.fuelEconomyThresholdKmL,
+    minResaleLiquidityScore: goal.minResaleLiquidityScore,
+    familySpaceRequired: goal.familySpaceRequired,
+    requiredFeatures: JSON.stringify(goal.requiredFeatures),
+    preferredBodyTypes: JSON.stringify(goal.preferredBodyTypes),
+    preferredBrands: JSON.stringify(goal.preferredBrands),
+    excludedBrandsModels: JSON.stringify(goal.excludedBrandsModels),
+  };
+}
+
 const MIN_ALLOWED_YEAR = 1980;
 const MAX_ALLOWED_YEAR = 2100;
 

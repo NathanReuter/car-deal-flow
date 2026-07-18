@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateGoalInput, type GoalFormInput } from "../goal-form";
+import { serializeGoalForDb, validateGoalInput, type GoalFormInput } from "../goal-form";
 
 function baseInput(overrides: Partial<GoalFormInput> = {}): GoalFormInput {
   return {
@@ -93,5 +93,22 @@ describe("validateGoalInput", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.preferredBodyTypes).toEqual(["suv", "sedan"]);
+  });
+});
+
+describe("serializeGoalForDb", () => {
+  it("JSON-stringifies the array fields and passes scalars through", () => {
+    const result = validateGoalInput(baseInput());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const data = serializeGoalForDb(result.value);
+    expect(data.name).toBe("Primary buy");
+    expect(data.budgetMinBRL).toBe(60_000);
+    expect(data.familySpaceRequired).toBe(false);
+    expect(JSON.parse(data.preferredBrands)).toEqual(["Toyota"]);
+    expect(JSON.parse(data.preferredBodyTypes)).toEqual(["suv"]);
+    expect(JSON.parse(data.requiredFeatures)).toEqual(["Câmbio automático"]);
+    expect(JSON.parse(data.excludedBrandsModels)).toEqual(["Fiat Mobi"]);
   });
 });

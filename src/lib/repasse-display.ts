@@ -1,9 +1,13 @@
+import { formatBRL } from "@/lib/format";
 import {
   DEAL_PHASE_LABEL,
   type Car,
   type DealPhase,
   type RepasseUrgency,
 } from "@/lib/types";
+
+/** Repasse economics are never guessed: null/undefined means "not disclosed". */
+const NOT_DISCLOSED = "não informado";
 
 /** Badge variants exposed by the UI `Badge` primitive. */
 export type BadgeVariant = "neutral" | "success" | "warning" | "danger" | "outline";
@@ -47,4 +51,29 @@ export type PhaseFilter = "all" | DealPhase;
 export function matchesPhase(car: Pick<Car, "dealPhase">, filter: PhaseFilter): boolean {
   if (filter === "all") return true;
   return resolveDealPhase(car.dealPhase) === filter;
+}
+
+/** BRL value or "não informado" — an undisclosed value never renders as R$ 0. */
+export function formatRepasseBRL(value: number | null | undefined): string {
+  if (value == null) return NOT_DISCLOSED;
+  return formatBRL(value);
+}
+
+/** "48× de R$ 1.250", or the best partial phrasing, or "não informado". */
+export function formatInstallmentPlan(
+  installmentBRL: number | null | undefined,
+  installmentsRemaining: number | null | undefined,
+): string {
+  const hasValue = installmentBRL != null;
+  const hasCount = installmentsRemaining != null;
+  if (hasValue && hasCount) return `${installmentsRemaining}× de ${formatBRL(installmentBRL)}`;
+  if (hasCount) return `${installmentsRemaining} parcelas restantes`;
+  if (hasValue) return `${formatBRL(installmentBRL)} por parcela`;
+  return NOT_DISCLOSED;
+}
+
+/** Seller contact handle, trimmed; blank/undisclosed → "não informado". */
+export function formatContact(contact: string | null | undefined): string {
+  const trimmed = contact?.trim();
+  return trimmed ? trimmed : NOT_DISCLOSED;
 }

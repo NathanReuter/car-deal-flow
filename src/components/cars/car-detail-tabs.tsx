@@ -7,7 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckStatusBadge } from "@/components/domain/check-status-badge";
+import { UrgencyBadge } from "@/components/domain/urgency-badge";
 import { formatBRL, formatDate, formatFipe, formatKm, formatPct } from "@/lib/format";
+import { formatContact, formatInstallmentPlan, formatRepasseBRL } from "@/lib/repasse-display";
 import { RISK_CHECK_LABEL } from "@/lib/types";
 import type { CarBundle } from "@/lib/aggregate";
 import { syncFipeValue, type FipeSyncResult } from "@/lib/actions/fipe-sync";
@@ -22,6 +24,7 @@ const RATING_LABEL: Record<string, { label: string; variant: "success" | "warnin
 
 export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
   const { car, goalMatch, risk, condition, market } = bundle;
+  const isRepasse = car.dealPhase === "pre_repossession";
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [syncResult, setSyncResult] = useState<FipeSyncResult | null>(null);
@@ -38,6 +41,7 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
     <Tabs defaultValue="overview">
       <TabsList className="flex-wrap">
         <TabsTrigger value="overview">Overview</TabsTrigger>
+        {isRepasse && <TabsTrigger value="repasse">Repasse</TabsTrigger>}
         <TabsTrigger value="goal">Goal Fit</TabsTrigger>
         <TabsTrigger value="risk">Documentation &amp; Risk</TabsTrigger>
         <TabsTrigger value="condition">Condition</TabsTrigger>
@@ -88,6 +92,37 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
           </CardContent>
         </Card>
       </TabsContent>
+
+      {isRepasse && (
+        <TabsContent value="repasse">
+          <Card className="border-[var(--warning)]/40">
+            <CardHeader className="flex-row items-center justify-between space-y-0">
+              <CardTitle>Repasse — assumir financiamento</CardTitle>
+              <UrgencyBadge urgency={car.repasse?.urgency} />
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Entrada pedida" value={formatRepasseBRL(car.repasse?.entryAskBRL)} />
+              <Field label="Saldo devedor" value={formatRepasseBRL(car.repasse?.outstandingDebtBRL)} />
+              <Field
+                label="Preço-âncora (entrada + saldo)"
+                value={formatBRL(car.askingPriceBRL)}
+              />
+              <Field
+                label="Parcelas"
+                value={formatInstallmentPlan(
+                  car.repasse?.installmentBRL,
+                  car.repasse?.installmentsRemaining,
+                )}
+              />
+              <Field
+                label="Urgência"
+                value={car.repasse?.urgency ? <UrgencyBadge urgency={car.repasse.urgency} /> : "não informado"}
+              />
+              <Field label="Contato do vendedor" value={formatContact(car.repasse?.sellerContact)} />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      )}
 
       <TabsContent value="goal">
         <Card>

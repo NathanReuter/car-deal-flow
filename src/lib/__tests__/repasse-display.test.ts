@@ -4,7 +4,11 @@ import {
   phaseBadge,
   urgencyBadge,
   matchesPhase,
+  formatRepasseBRL,
+  formatInstallmentPlan,
+  formatContact,
 } from "@/lib/repasse-display";
+import { formatBRL } from "@/lib/format";
 import type { Car, DealPhase } from "@/lib/types";
 
 const car = (dealPhase?: DealPhase) => ({ dealPhase }) as Car;
@@ -67,5 +71,44 @@ describe("matchesPhase", () => {
     expect(matchesPhase(car("pre_repossession"), "pre_repossession")).toBe(true);
     expect(matchesPhase(car("auction"), "pre_repossession")).toBe(false);
     expect(matchesPhase(car(undefined), "pre_repossession")).toBe(false);
+  });
+});
+
+describe("formatRepasseBRL", () => {
+  it("renders null/undefined as 'não informado', never 0", () => {
+    expect(formatRepasseBRL(null)).toBe("não informado");
+    expect(formatRepasseBRL(undefined)).toBe("não informado");
+  });
+  it("formats a real value via formatBRL", () => {
+    expect(formatRepasseBRL(15000)).toBe(formatBRL(15000));
+  });
+  it("renders an explicit disclosed zero as R$ 0 (0 is real, distinct from null)", () => {
+    expect(formatRepasseBRL(0)).toBe(formatBRL(0));
+  });
+});
+
+describe("formatInstallmentPlan", () => {
+  it("both known -> count × value", () => {
+    expect(formatInstallmentPlan(1250, 48)).toBe(`48× de ${formatBRL(1250)}`);
+  });
+  it("only count known", () => {
+    expect(formatInstallmentPlan(null, 30)).toBe("30 parcelas restantes");
+  });
+  it("only value known", () => {
+    expect(formatInstallmentPlan(1250, null)).toBe(`${formatBRL(1250)} por parcela`);
+  });
+  it("neither known -> não informado", () => {
+    expect(formatInstallmentPlan(null, null)).toBe("não informado");
+  });
+});
+
+describe("formatContact", () => {
+  it("renders null/undefined/blank as 'não informado'", () => {
+    expect(formatContact(null)).toBe("não informado");
+    expect(formatContact(undefined)).toBe("não informado");
+    expect(formatContact("   ")).toBe("não informado");
+  });
+  it("trims and returns the handle", () => {
+    expect(formatContact("  @vendedor ")).toBe("@vendedor");
   });
 });

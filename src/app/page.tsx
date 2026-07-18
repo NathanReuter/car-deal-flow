@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAllBundles } from "@/lib/aggregate";
 import { PipelineView } from "@/components/pipeline/pipeline-view";
 
@@ -22,9 +23,14 @@ export default async function Home() {
   }
   return (
     <main className="mx-auto max-w-[1400px] p-6">
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold text-text-primary">Car Deal Flow</h1>
-        <p className="text-sm text-text-muted">{bundles.length} vehicles in the pipeline.</p>
+      <header className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-text-primary">Car Deal Flow</h1>
+          <p className="text-sm text-text-muted">{bundles.length} vehicles in the pipeline.</p>
+        </div>
+        <Link href="/goal" className="shrink-0 text-sm text-accent hover:underline">
+          Edit buying goal →
+        </Link>
       </header>
       {bundles.length === 0 ? (
         <p className="text-sm text-text-muted">No vehicles yet. Run a harvest (see the harvest skills) to populate leads.</p>

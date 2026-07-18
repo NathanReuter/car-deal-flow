@@ -9,7 +9,12 @@ import { Button } from "@/components/ui/button";
 import { CheckStatusBadge } from "@/components/domain/check-status-badge";
 import { UrgencyBadge } from "@/components/domain/urgency-badge";
 import { formatBRL, formatDate, formatFipe, formatKm, formatPct } from "@/lib/format";
-import { formatContact, formatInstallmentPlan, formatRepasseBRL } from "@/lib/repasse-display";
+import {
+  anchorPriceLabel,
+  formatContact,
+  formatInstallmentPlan,
+  formatRepasseBRL,
+} from "@/lib/repasse-display";
 import { RISK_CHECK_LABEL } from "@/lib/types";
 import type { CarBundle } from "@/lib/aggregate";
 import { syncFipeValue, type FipeSyncResult } from "@/lib/actions/fipe-sync";
@@ -104,7 +109,7 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
               <Field label="Entrada pedida" value={formatRepasseBRL(car.repasse?.entryAskBRL)} />
               <Field label="Saldo devedor" value={formatRepasseBRL(car.repasse?.outstandingDebtBRL)} />
               <Field
-                label="Preço-âncora (entrada + saldo)"
+                label={anchorPriceLabel(car.repasse?.outstandingDebtBRL)}
                 value={formatBRL(car.askingPriceBRL)}
               />
               <Field

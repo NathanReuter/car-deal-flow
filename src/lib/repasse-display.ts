@@ -77,3 +77,15 @@ export function formatContact(contact: string | null | undefined): string {
   const trimmed = contact?.trim();
   return trimmed ? trimmed : NOT_DISCLOSED;
 }
+
+/**
+ * Label for askingPriceBRL on a repasse row. When saldo is unknown, ingestion
+ * stores entrada alone — the label must not claim the sum includes debt.
+ */
+export function anchorPriceLabel(
+  outstandingDebtBRL: number | null | undefined,
+): string {
+  return outstandingDebtBRL != null
+    ? "Preço-âncora (entrada + saldo)"
+    : "Preço-âncora (entrada; saldo não informado)";
+}

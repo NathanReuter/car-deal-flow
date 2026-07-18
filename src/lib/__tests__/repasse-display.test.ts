@@ -7,6 +7,7 @@ import {
   formatRepasseBRL,
   formatInstallmentPlan,
   formatContact,
+  anchorPriceLabel,
 } from "@/lib/repasse-display";
 import { formatBRL } from "@/lib/format";
 import type { Car, DealPhase } from "@/lib/types";
@@ -110,5 +111,18 @@ describe("formatContact", () => {
   });
   it("trims and returns the handle", () => {
     expect(formatContact("  @vendedor ")).toBe("@vendedor");
+  });
+});
+
+describe("anchorPriceLabel", () => {
+  it("claims entrada + saldo when outstanding debt is known", () => {
+    expect(anchorPriceLabel(42_000)).toBe("Preço-âncora (entrada + saldo)");
+  });
+  it("does not claim saldo is included when outstanding debt is unknown", () => {
+    expect(anchorPriceLabel(null)).toBe("Preço-âncora (entrada; saldo não informado)");
+    expect(anchorPriceLabel(undefined)).toBe("Preço-âncora (entrada; saldo não informado)");
+  });
+  it("treats an explicit zero debt as known (paid off)", () => {
+    expect(anchorPriceLabel(0)).toBe("Preço-âncora (entrada + saldo)");
   });
 });

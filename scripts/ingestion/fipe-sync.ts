@@ -1,7 +1,7 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { findFipeValue, FipeError } from "../../src/lib/integrations/fipe";
-import type { FuelType, Transmission } from "../../src/lib/types";
+import type { FuelType } from "../../src/lib/types";
 
 /**
  * Dedupe identical FIPE GETs (brands list, per-brand models, per-model years)
@@ -45,11 +45,9 @@ export async function syncMissingFipe(prisma: PrismaClient): Promise<{ synced: n
       const match = await findFipeValue({
         brand: car.brand,
         model: car.model,
-        trim: car.trim,
         year: car.year,
         modelYear: car.modelYear,
         fuel: car.fuel as FuelType,
-        transmission: car.transmission as Transmission,
       });
       await prisma.car.update({ where: { id: car.id }, data: { fipeValueBRL: match.valueBRL } });
       synced += 1;

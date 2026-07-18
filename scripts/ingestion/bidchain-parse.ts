@@ -2,6 +2,7 @@
 import { detectDamageSignals } from "../../src/lib/filters/damageSignals";
 import type { BodyType } from "../../src/lib/types";
 import type { WriteLeadInput } from "./write-lead";
+import { BRAND_ALIASES, guessBodyTypeByModel } from "./lib/parse-common";
 
 export type BidchainParsed = {
   id: string;
@@ -21,33 +22,6 @@ export type BidchainParsed = {
   skipReason?: string;
 };
 
-const BRAND_ALIASES: Record<string, string> = {
-  VW: "Volkswagen",
-  VOLKSWAGEN: "Volkswagen",
-  GM: "Chevrolet",
-  CHEVROLET: "Chevrolet",
-  "M.BENZ": "Mercedes-Benz",
-  "MERCEDES BENZ": "Mercedes-Benz",
-  MERCEDES: "Mercedes-Benz",
-  "MERCEDES-BENZ": "Mercedes-Benz",
-  FIAT: "Fiat",
-  FORD: "Ford",
-  TOYOTA: "Toyota",
-  HYUNDAI: "Hyundai",
-  AUDI: "Audi",
-  BMW: "BMW",
-  CHERY: "Chery",
-  "CAOA CHERY": "Chery",
-  RENAULT: "Renault",
-  NISSAN: "Nissan",
-  HONDA: "Honda",
-  JEEP: "Jeep",
-  KIA: "Kia",
-  PEUGEOT: "Peugeot",
-  CITROEN: "Citroen",
-  CITROËN: "Citroen",
-  MITSUBISHI: "Mitsubishi",
-};
 
 const MODEL_BRAND: Array<{ re: RegExp; brand: string }> = [
   { re: /\b(SAVEIRO|GOL|FOX|CROSSFOX|POLO|VOYAGE|VIRTUS|JETTA|NIVUS|T[\-\s]?CROSS)\b/i, brand: "Volkswagen" },
@@ -239,45 +213,6 @@ function titleCase(s: string): string {
     .join("");
 }
 
-function guessBodyType(model: string): BodyType | null {
-  const m = model
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toUpperCase();
-
-  if (
-    /\b(STRADA|SAVEIRO|TORO|HILUX|RANGER|S10|MAVERICK|OROCH|MONTANA|FRONTIER|AMAROK|L200)\b/.test(
-      m,
-    )
-  ) {
-    return "pickup";
-  }
-  if (/\b(SPIN|DOBLO|IDEA|B180|B200)\b/.test(m)) return "minivan";
-  if (
-    /\b(CRETA|COMPASS|TRACKER|T-CROSS|TCROSS|KICKS|HR-V|HRV|RENEGADE|DUSTER|CAPTUR|SW4|ECOSPORT|TIGGO|TAOS|NIVUS|FASTBACK|PULSE|TUCSON|SPORTAGE|IX35)\b/.test(
-      m,
-    )
-  ) {
-    return "suv";
-  }
-  // Hatch before sedan so "GOL ... CITY" / Fiesta etc. don't hit sedan CITY/FOCUS lists wrongly.
-  if (
-    /\b(UNO|PALIO|GOL|FOX|CROSSFOX|POLO|GOLF|KA\b|FIESTA|ONIX|HB20|SANDERO|CLIO|MOBI|ARGO|KWID|CELTA|CORSA)\b/.test(
-      m,
-    )
-  ) {
-    return "hatch";
-  }
-  if (
-    /\b(COROLLA|CRUZE|FOCUS|FUSION|SENTRA|VERSA|PRISMA|COBALT|SIENA|VOYAGE|VIRTUS|JETTA|LOGAN|320I|318I|A3|A4|A5)\b/.test(
-      m,
-    ) ||
-    /\bHONDA\s+CITY\b|\bCITY\s+1\./.test(m)
-  ) {
-    return "sedan";
-  }
-  return null;
-}
 
 function sellerTypeFromHtml(html: string): BidchainParsed["sellerType"] {
   const text = stripTags(html);
@@ -356,7 +291,7 @@ function parseBidchainLot(id: string, url: string, html: string): BidchainParsed
   const price = extractPrice(html);
   if (!price) return emptySkip(id, url, "missing price");
 
-  const bodyType = guessBodyType(`${brandModel.brand} ${brandModel.model}`);
+  const bodyType = guessBodyTypeByModel(`${brandModel.brand} ${brandModel.model}`);
   if (!bodyType) return emptySkip(id, url, `ambiguous bodyType: ${brandModel.model}`);
 
   const loc = extractLoc(html);

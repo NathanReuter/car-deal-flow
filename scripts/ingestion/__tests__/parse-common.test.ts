@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  guessBodyTypeByModel,
   inferBodyType,
   normalizeBrand,
   parseBrl,
@@ -62,5 +63,17 @@ describe("inferBodyType", () => {
 
   it("returns null for non-car keywords", () => {
     expect(inferBodyType("Honda", "CG 160", "motocicleta")).toBeNull();
+  });
+});
+
+describe("guessBodyTypeByModel", () => {
+  it("classifies a Tiggo SUV as suv", () => {
+    expect(guessBodyTypeByModel("CAOA CHERY TIGGO 5X")).toBe("suv");
+  });
+
+  // BIDchain passes "<brand> <model>", and the brand is now "Caoa Chery". The
+  // brand string must not force an SUV verdict over a specific sedan match.
+  it("classifies a Caoa Chery Arrizo as sedan, not suv", () => {
+    expect(guessBodyTypeByModel("CAOA CHERY ARRIZO 6")).toBe("sedan");
   });
 });

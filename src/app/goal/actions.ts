@@ -21,15 +21,22 @@ export async function updateGoal(input: GoalFormInput): Promise<UpdateGoalResult
     return { ok: false, errors: result.errors };
   }
 
-  const active = await prisma.buyingGoal.findFirst({ where: { active: true } });
-  if (!active) {
-    return { ok: false, error: "No active buying goal to update." };
-  }
+  try {
+    const active = await prisma.buyingGoal.findFirst({ where: { active: true } });
+    if (!active) {
+      return { ok: false, error: "No active buying goal to update." };
+    }
 
-  await prisma.buyingGoal.update({
-    where: { id: active.id },
-    data: serializeGoalForDb(result.value),
-  });
+    await prisma.buyingGoal.update({
+      where: { id: active.id },
+      data: serializeGoalForDb(result.value),
+    });
+  } catch (e) {
+    // Surface DB failures to the client as a friendly message rather than an
+    // unhandled rejection inside the caller's transition.
+    console.error("updateGoal failed:", e);
+    return { ok: false, error: "Could not save the goal. Please try again." };
+  }
 
   revalidatePath("/");
   revalidatePath("/goal");

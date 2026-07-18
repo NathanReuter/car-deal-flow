@@ -175,7 +175,6 @@ export function GoalEditor({ goal }: { goal: BuyingGoal }) {
       <Field
         label="Preferred brands"
         hint="Pick from the list or type to add a custom brand."
-        error={errors.preferredBrands}
       >
         <MultiSelect
           values={form.preferredBrands}
@@ -203,7 +202,6 @@ export function GoalEditor({ goal }: { goal: BuyingGoal }) {
       <Field
         label="Required features"
         hint="Pick from the list or type to add a custom feature."
-        error={errors.requiredFeatures}
       >
         <MultiSelect
           values={form.requiredFeatures}
@@ -216,7 +214,6 @@ export function GoalEditor({ goal }: { goal: BuyingGoal }) {
       <Field
         label="Excluded brands / models"
         hint='Type any brand or "Brand Model" to exclude, e.g. "Fiat Mobi".'
-        error={errors.excludedBrandsModels}
       >
         <MultiSelect
           values={form.excludedBrandsModels}

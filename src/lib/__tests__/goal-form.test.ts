@@ -81,6 +81,55 @@ describe("validateGoalInput", () => {
     expect(result.value.preferredBrands).toEqual(["Toyota", "Honda"]);
   });
 
+  it("rejects non-integer values for Int-backed fields", () => {
+    for (const overrides of [
+      { budgetMinBRL: 60_000.5 },
+      { budgetMaxBRL: 120_000.5 },
+      { maxMileageKm: 90_000.5 },
+      { fuelEconomyThresholdKmL: 10.5 },
+      { minResaleLiquidityScore: 50.5 },
+    ]) {
+      const result = validateGoalInput(baseInput(overrides));
+      expect(result.ok, JSON.stringify(overrides)).toBe(false);
+    }
+  });
+
+  it("parses pt-BR thousands separators (60.000 -> 60000)", () => {
+    const result = validateGoalInput(baseInput({ budgetMinBRL: "60.000", maxMileageKm: "90.000" }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.budgetMinBRL).toBe(60_000);
+    expect(result.value.maxMileageKm).toBe(90_000);
+  });
+
+  it("rejects a pt-BR decimal (comma) for an integer field", () => {
+    const result = validateGoalInput(baseInput({ fuelEconomyThresholdKmL: "10,5" }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.fuelEconomyThresholdKmL).toBeTruthy();
+  });
+
+  it("does not throw on malformed input (missing scalars, non-array fields)", () => {
+    // Simulates a hand-crafted POST bypassing the typed client.
+    const malformed = {
+      familySpaceRequired: true,
+    } as unknown as GoalFormInput;
+    let result: ReturnType<typeof validateGoalInput> | undefined;
+    expect(() => {
+      result = validateGoalInput(malformed);
+    }).not.toThrow();
+    expect(result?.ok).toBe(false);
+  });
+
+  it("coerces non-array list fields to empty arrays without throwing", () => {
+    const result = validateGoalInput(
+      baseInput({ preferredBrands: undefined as unknown as string[] }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.preferredBrands).toEqual([]);
+  });
+
   it("rejects a body type outside the closed set", () => {
     const result = validateGoalInput(baseInput({ preferredBodyTypes: ["spaceship"] }));
     expect(result.ok).toBe(false);

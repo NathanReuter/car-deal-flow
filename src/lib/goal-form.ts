@@ -78,10 +78,13 @@ const MIN_ALLOWED_YEAR = 1980;
 const MAX_ALLOWED_YEAR = 2100;
 
 // Trim, drop empties, and de-duplicate (first occurrence wins) while preserving order.
-function cleanList(values: string[]): string[] {
+// Tolerates non-array input (e.g. a hand-crafted POST) by treating it as empty.
+function cleanList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of values) {
+    if (typeof raw !== "string") continue;
     const value = raw.trim();
     if (!value || seen.has(value)) continue;
     seen.add(value);
@@ -90,17 +93,29 @@ function cleanList(values: string[]): string[] {
   return out;
 }
 
+// Parses a form value into a number using pt-BR conventions: "." is a thousands
+// separator (stripped) and "," is the decimal mark. All goal fields are integers,
+// so a decimal result is left as-is and rejected by the Number.isInteger checks.
 function toNumber(value: number | string): number {
   if (typeof value === "number") return value;
+  if (typeof value !== "string") return NaN;
   const trimmed = value.trim();
   if (trimmed === "") return NaN;
-  return Number(trimmed);
+  const normalized = trimmed.replace(/[.\s]/g, "").replace(",", ".");
+  return Number(normalized);
+}
+
+// Every numeric goal field maps to a prisma Int column, so all must be whole
+// numbers within their bounds — otherwise prisma.update rejects the write.
+function integerError(value: number, min: number, max: number, message: string): string | undefined {
+  if (!Number.isInteger(value) || value < min || value > max) return message;
+  return undefined;
 }
 
 export function validateGoalInput(input: GoalFormInput): GoalValidationResult {
   const errors: GoalFieldErrors = {};
 
-  const name = input.name.trim();
+  const name = typeof input.name === "string" ? input.name.trim() : "";
   if (!name) errors.name = "Name is required.";
 
   const budgetMinBRL = toNumber(input.budgetMinBRL);
@@ -110,36 +125,29 @@ export function validateGoalInput(input: GoalFormInput): GoalValidationResult {
   const fuelEconomyThresholdKmL = toNumber(input.fuelEconomyThresholdKmL);
   const minResaleLiquidityScore = toNumber(input.minResaleLiquidityScore);
 
-  if (!Number.isFinite(budgetMinBRL) || budgetMinBRL <= 0) {
-    errors.budgetMinBRL = "Enter a budget minimum above zero.";
-  }
-  if (!Number.isFinite(budgetMaxBRL) || budgetMaxBRL <= 0) {
-    errors.budgetMaxBRL = "Enter a budget maximum above zero.";
-  }
-  if (
-    !errors.budgetMinBRL &&
-    !errors.budgetMaxBRL &&
-    budgetMaxBRL < budgetMinBRL
-  ) {
+  errors.budgetMinBRL = integerError(
+    budgetMinBRL, 1, Number.MAX_SAFE_INTEGER, "Enter a whole budget minimum above zero.",
+  );
+  errors.budgetMaxBRL = integerError(
+    budgetMaxBRL, 1, Number.MAX_SAFE_INTEGER, "Enter a whole budget maximum above zero.",
+  );
+  if (!errors.budgetMinBRL && !errors.budgetMaxBRL && budgetMaxBRL < budgetMinBRL) {
     errors.budgetMaxBRL = "Max budget must be at least the min budget.";
   }
 
-  if (!Number.isInteger(minYear) || minYear < MIN_ALLOWED_YEAR || minYear > MAX_ALLOWED_YEAR) {
-    errors.minYear = `Enter a year between ${MIN_ALLOWED_YEAR} and ${MAX_ALLOWED_YEAR}.`;
-  }
-  if (!Number.isFinite(maxMileageKm) || maxMileageKm < 0) {
-    errors.maxMileageKm = "Enter a mileage of zero or more.";
-  }
-  if (!Number.isFinite(fuelEconomyThresholdKmL) || fuelEconomyThresholdKmL < 0) {
-    errors.fuelEconomyThresholdKmL = "Enter a value of zero or more.";
-  }
-  if (
-    !Number.isFinite(minResaleLiquidityScore) ||
-    minResaleLiquidityScore < 0 ||
-    minResaleLiquidityScore > 100
-  ) {
-    errors.minResaleLiquidityScore = "Enter a score between 0 and 100.";
-  }
+  errors.minYear = integerError(
+    minYear, MIN_ALLOWED_YEAR, MAX_ALLOWED_YEAR,
+    `Enter a whole year between ${MIN_ALLOWED_YEAR} and ${MAX_ALLOWED_YEAR}.`,
+  );
+  errors.maxMileageKm = integerError(
+    maxMileageKm, 0, Number.MAX_SAFE_INTEGER, "Enter a whole mileage of zero or more.",
+  );
+  errors.fuelEconomyThresholdKmL = integerError(
+    fuelEconomyThresholdKmL, 0, Number.MAX_SAFE_INTEGER, "Enter a whole number of zero or more.",
+  );
+  errors.minResaleLiquidityScore = integerError(
+    minResaleLiquidityScore, 0, 100, "Enter a whole score between 0 and 100.",
+  );
 
   const preferredBodyTypes = cleanList(input.preferredBodyTypes);
   const invalidBodyTypes = preferredBodyTypes.filter(
@@ -149,8 +157,13 @@ export function validateGoalInput(input: GoalFormInput): GoalValidationResult {
     errors.preferredBodyTypes = `Unknown body type(s): ${invalidBodyTypes.join(", ")}.`;
   }
 
-  if (Object.keys(errors).length > 0) {
-    return { ok: false, errors };
+  // integerError writes undefined for valid fields; keep only real messages.
+  const realErrors: GoalFieldErrors = {};
+  for (const [key, message] of Object.entries(errors)) {
+    if (message) realErrors[key as keyof GoalFieldErrors] = message;
+  }
+  if (Object.keys(realErrors).length > 0) {
+    return { ok: false, errors: realErrors };
   }
 
   return {

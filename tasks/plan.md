@@ -9,6 +9,15 @@
 
 **Architecture:** Mirror the auction-harvest pattern. Each source is a vertical slice under `scripts/ingestion/` (list → fetch → parse → `write-lead.ts` → `apply-goal-filter.ts`), reusing dedup (`identity.ts`), the damage gate, fixture tests, and the `harvest.ts` orchestrator (new `--phase` selector). Verification extends `scripts/risk-checks/` + the `sync-risk-checks` skill. Data model gains `dealPhase` + flat repasse columns on `Car`.
 
+## Status (updated 2026-07-18)
+
+- **Phase 0 — Data model + repasse libs: DONE.** `dealPhase`, repasse columns, `write-lead` pricing rule, `repasse-economics.ts`, `repasse-urgency.ts` all shipped.
+- **Phase 1 — Repasso + Repasses: CANCELLED.** Both sources probed dead (2026-07-17) and re-confirmed dead (2026-07-18) — see `docs/superpowers/specs/2026-07-17-repasso-repasses-probe.md`. Repasses is app-only behind an expired cert (out of policy); Repasso's newest content is Nov 2020. OLX is the sole live phase-1 source.
+- **Phase 2 — OLX: DONE.** `olx-list.ts` / `olx-parse.ts` / `olx-harvest.ts` shipped.
+- **Phase 3 — Orchestrator + skill: DONE.** `harvest.ts` `--phase` selector, npm scripts, `harvest-repasse` skill.
+- **Phase 4 — Verification gate: DONE.** `list-targets --phase pre`, `write-result` phase-1 outcome mapping.
+- **Phase 5 — UI surfacing: IN PROGRESS.** Table badges + phase filter and the detail economics block are the remaining work.
+
 ## Global Constraints (carried over from Tier 1, all still binding)
 
 - Fail closed: never guess brand, model, year, price, body type. Ambiguous repasse economics → `null`.
@@ -34,7 +43,7 @@ For `dealPhase = "pre_repossession"`:
 
 ### Phase 0: Data model + shared repasse libs (foundation)
 
-- [ ] **Task 0.1: Schema + domain types for deal phase and repasse economics**
+- [x] **Task 0.1: Schema + domain types for deal phase and repasse economics**
   - **Description:** Add to `prisma/schema.prisma` `Car`: `dealPhase String @default("auction")`, `entryAskBRL Int?`, `outstandingDebtBRL Int?`, `installmentBRL Int?`, `installmentsRemaining Int?`, `sellerContact String?`, `repasseUrgency String?`. Migrate SQLite (existing rows get `"auction"` via default). Update `src/lib/types.ts`: `DealPhase` type, `sellerType "repasse"` + label, optional `repasse` block on `Car` (nested object in domain, flat columns in DB), and mapping in `src/lib/aggregate.ts`.
   - **Acceptance criteria:**
     - [ ] Migration applies cleanly to the existing DB; all existing cars read back with `dealPhase === "auction"`.
@@ -42,7 +51,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** `npx prisma migrate dev` ok; `npm test`; `npx tsc --noEmit`.
   - **Dependencies:** None. **Files:** `prisma/schema.prisma`, migration, `src/lib/types.ts`, `src/lib/aggregate.ts`. **Scope:** M.
 
-- [ ] **Task 0.2: `write-lead.ts` repasse support**
+- [x] **Task 0.2: `write-lead.ts` repasse support**
   - **Description:** Extend `WriteLeadInput` with `dealPhase?`, `entryAskBRL?`, `outstandingDebtBRL?`, `installmentBRL?`, `installmentsRemaining?`, `sellerContact?`. Add `"repasse"` to `VALID_SELLER_TYPES`. Enforce the pricing rule above (compute/validate `askingPriceBRL`, stamp breakdown or "saldo devedor não informado" note; phase-2 leads keep the lance-mínimo note). Persist new columns; merge behavior: cross-phase merge keeps the car, appends source, and stamps a "window closed — reappeared at auction" note when an existing pre_repossession car is re-written by an auction source.
   - **Acceptance criteria:**
     - [ ] Repasse lead with entrada+saldo writes with summed price and breakdown note.
@@ -51,7 +60,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** new cases in `write-lead` tests; `npm test`.
   - **Dependencies:** 0.1. **Files:** `scripts/ingestion/write-lead.ts`, its tests. **Scope:** M.
 
-- [ ] **Task 0.3: `lib/repasse-economics.ts` — conservative ad-text extraction**
+- [x] **Task 0.3: `lib/repasse-economics.ts` — conservative ad-text extraction**
   - **Description:** Pure functions extracting `entryAskBRL`, `outstandingDebtBRL`, `installmentBRL`, `installmentsRemaining`, and contact handle from Portuguese ad text ("entrada de R$ 15.000", "saldo devedor 42 mil", "48x de R$ 1.250", "restam 30 parcelas", phone/WhatsApp patterns). Ambiguity (two candidate values, ranges, "consulte") → `null`. Reuses `parse-common.ts` BRL parsing.
   - **Acceptance criteria:**
     - [ ] Table-driven tests cover the common phrasings plus ≥5 ambiguous cases asserting `null`.
@@ -59,7 +68,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** `npx vitest run scripts/ingestion/__tests__/repasse-economics.test.ts`.
   - **Dependencies:** None. **Files:** `scripts/ingestion/lib/repasse-economics.ts`, test. **Scope:** S.
 
-- [ ] **Task 0.4: `lib/repasse-urgency.ts` — heuristic urgency flag**
+- [x] **Task 0.4: `lib/repasse-urgency.ts` — heuristic urgency flag**
   - **Description:** Pure function `computeRepasseUrgency(input) → "high" | "medium" | "low"` from: restriction check results (judicial/RENAJUD found → high), ad-text markers ("urgente", "entrega amigável", "banco vai tomar", parcelas atrasadas), FIPE discount depth (when available), ad age. No day-countdowns.
   - **Acceptance criteria:**
     - [ ] Restriction signal alone forces `high`; plain ad with no signals → `low`.
@@ -75,13 +84,13 @@ For `dealPhase = "pre_repossession"`:
 
 ### Phase 1: Repasso + Repasses (low-risk sources, prove the phase-1 path end-to-end)
 
-- [ ] **Task 1.1: Repasso probe + spec note**
+- [x] ~~**Task 1.1: Repasso probe + spec note**~~ (CANCELLED — source dead)
   - **Description:** Fetch Repasso.com.br listing + one detail page (plain HTTP), save fixtures, record structure/selectors/volume in a short probe doc (pattern: `2026-07-15-santander-retomados-probe.md`). Confirm robots.txt still permits.
   - **Acceptance criteria:** probe doc committed with listing URL scheme, pagination, detail selectors, observed ad count.
   - **Verification:** fixtures saved under `scripts/ingestion/__tests__/fixtures/`.
   - **Dependencies:** None. **Files:** probe doc, 2 fixtures. **Scope:** S.
 
-- [ ] **Task 1.2: `repasso-harvest.ts` (list + parse + write)**
+- [x] ~~**Task 1.2: `repasso-harvest.ts` (list + parse + write)**~~ (CANCELLED — source dead)
   - **Description:** Single CLI: paginate listings → fetch details (plain HTTP, `--skip-existing` cache dir under `/tmp/repasso-harvest/`) → parse (identity fields fail-closed, damage gate, `repasse-economics`) → `write-lead` with `dealPhase: "pre_repossession"`, `sellerType: "repasse"`, `sourcePlatform: "Repasso"` → summary JSON.
   - **Acceptance criteria:**
     - [ ] Fixture tests for listing + detail parse, including one economics-bearing ad and one damage-gated ad.
@@ -89,7 +98,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** fixture tests; live `--dry-run --limit 5` run shows sane parsed output.
   - **Dependencies:** 0.1–0.3, 1.1. **Files:** `repasso-harvest.ts`, tests, fixtures. **Scope:** M.
 
-- [ ] **Task 1.3: Repasses.com.br wp-json probe + `repasses-harvest.ts`**
+- [x] ~~**Task 1.3: Repasses.com.br wp-json probe + `repasses-harvest.ts`**~~ (CANCELLED — source dead)
   - **Description:** Probe `wp-json/wp/v2/` for a vehicle post type (fallback: HTML). Then same harvest shape as 1.2 with `sourcePlatform: "Repasses"`; JSON payload fixture test.
   - **Acceptance criteria:**
     - [ ] Probe outcome recorded (API vs HTML fallback) in the probe doc.
@@ -105,13 +114,13 @@ For `dealPhase = "pre_repossession"`:
 
 ### Phase 2: OLX slice (highest volume, highest risk)
 
-- [ ] **Task 2.1: OLX probe — search access + anti-bot posture**
+- [x] **Task 2.1: OLX probe — search access + anti-bot posture**
   - **Description:** Playwright + stealth (existing stack) against OLX Autos search for "repasse" / "assumo financiamento" / "passo financiamento", constrained by active-goal price band + region. Determine: results markup (or embedded `__NEXT_DATA__` JSON), pagination, detail-page shape, block behavior. Save search + detail fixtures. **If OLX hard-blocks, stop and report options to owner — do not escalate evasion.**
   - **Acceptance criteria:** probe doc with access verdict, selectors/JSON paths, expected volume per query.
   - **Verification:** fixtures saved; probe doc committed.
   - **Dependencies:** None (parallel with Phase 1). **Files:** probe doc, fixtures. **Scope:** S–M.
 
-- [ ] **Task 2.2: `olx-list.ts` + `olx-fetch.ts`**
+- [x] **Task 2.2: `olx-list.ts` + `olx-fetch.ts`**
   - **Description:** `olx-list.ts`: run the query set, dedupe ad URLs across queries, `--out /tmp/olx-harvest/list.json`. `olx-fetch.ts`: batch detail fetch with `--skip-existing` into `/tmp/olx-harvest/details/`. Shared browser instance, polite pacing.
   - **Acceptance criteria:**
     - [ ] List output: url, title, price, city/UF, postedAt per ad; fixture test.
@@ -119,7 +128,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** fixture tests; live run capped at `--limit 10`.
   - **Dependencies:** 2.1. **Files:** `olx-list.ts`, `olx-fetch.ts`, tests. **Scope:** M.
 
-- [ ] **Task 2.3: `olx-parse.ts` + `olx-harvest.ts`**
+- [x] **Task 2.3: `olx-parse.ts` + `olx-harvest.ts`**
   - **Description:** Parse detail fixtures → identity fields (fail closed), damage gate, `repasse-economics` on description, plate `null` expected. Harvest writer mirrors 1.2 (`sourcePlatform: "OLX"`). Non-repasse ads matched by the query but lacking any financing signal in text → skip + tally (`skipReason: "no_financing_signal"`).
   - **Acceptance criteria:**
     - [ ] Fixture tests: economics-bearing ad, damage ad (rejected), no-signal ad (skipped).
@@ -135,7 +144,7 @@ For `dealPhase = "pre_repossession"`:
 
 ### Phase 3: Orchestrator, npm scripts, skill doc
 
-- [ ] **Task 3.1: `harvest.ts` phase selector + new sources**
+- [x] **Task 3.1: `harvest.ts` phase selector + new sources**
   - **Description:** Add `"olx" | "repasso" | "repasses"` to `HarvestSource`; add `--phase pre|auction|all` (default `all`; `--source` implies its phase). Post-harvest cleanup: broken-link sweep applies to phase-1 leads too (dead ad = sold or pulled → expire). Update `package.json` scripts (`harvest:pre`, etc.).
   - **Acceptance criteria:**
     - [ ] `--phase pre` runs exactly olx+repasso+repasses; `--all` runs everything; summary JSON groups per source.
@@ -143,7 +152,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** orchestrator unit tests for source selection; `npm test`.
   - **Dependencies:** 1.2, 1.3, 2.3. **Files:** `harvest.ts`, `package.json`, tests. **Scope:** S–M.
 
-- [ ] **Task 3.2: `harvest-repasse` skill doc**
+- [x] **Task 3.2: `harvest-repasse` skill doc**
   - **Description:** Thin skill (≤10-line primary instruction, matching the slimmed Tier 1 skills) for running the phase-1 harvest and reading the summary.
   - **Acceptance criteria:** skill invokes orchestrator, no HTML reading by the agent.
   - **Verification:** doc review.
@@ -157,7 +166,7 @@ For `dealPhase = "pre_repossession"`:
 
 ### Phase 4: Verification via sync-risk-checks (qualification gate)
 
-- [ ] **Task 4.1: `list-targets.ts` phase-1 mode + outcome mapping in `write-result.ts`**
+- [x] **Task 4.1: `list-targets.ts` phase-1 mode + outcome mapping in `write-result.ts`**
   - **Description:** `list-targets.ts` gains `--phase pre` (pre_repossession cars with a plate, active stages). `write-result.ts` maps phase-1 outcomes: gravame confirmed → stage `researching` + note; no gravame → `financing_lien` item `warning` + "possível golpe / não financiado" note, stays `new_lead`; judicial/RENAJUD hit → `repasseUrgency = "high"` (via `repasse-urgency` recompute).
   - **Acceptance criteria:**
     - [ ] Three outcome paths unit-tested against a seeded car.
@@ -165,7 +174,7 @@ For `dealPhase = "pre_repossession"`:
   - **Verification:** `scripts/risk-checks/__tests__/` green; `npm test`.
   - **Dependencies:** 0.1, 0.4. **Files:** `scripts/risk-checks/list-targets.ts`, `write-result.ts`, tests. **Scope:** M.
 
-- [ ] **Task 4.2: `sync-risk-checks` skill update**
+- [x] **Task 4.2: `sync-risk-checks` skill update**
   - **Description:** Document the phase-1 flow (financing_lien + judicial_restriction only for repasse leads; the human step of obtaining the plate from the seller; outcome meanings).
   - **Acceptance criteria:** skill doc covers phase-1 invocation and outcome table from the spec.
   - **Verification:** doc review.

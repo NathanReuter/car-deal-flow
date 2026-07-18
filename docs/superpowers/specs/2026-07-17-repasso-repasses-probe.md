@@ -29,3 +29,20 @@ first and primary phase-1 ingestion source; the end-to-end pre-repossession
 path is proven on OLX instead. Follow-up spec candidates for additional
 pre-repossession volume: Instagram hashtag monitoring, Webmotors partner API,
 Facebook Marketplace (all previously out of scope, unchanged).
+
+## Re-probe (2026-07-18) — verdict unchanged
+
+Re-ran a live check one day later before deciding whether to build Phase 1:
+
+- **Repasses.com.br** — root `https://www.repasses.com.br/` returns 200 but is
+  still only the "Repasse" app landing page. `web.repasses.com.br` **still
+  serves an expired SSL certificate** (curl error 60; loads only with `-k`).
+  `wp-json/wp/v2/types` exposes **only `post` and `page`** — no vehicle custom
+  post type. Inventory remains app-only via a private mobile API → out of
+  policy. Still dead / unbuildable.
+- **Repasso.com.br** — root and `/ad-category/veiculos/` return 200, but the
+  RSS feed's newest `pubDate` is **still `Wed, 25 Nov 2020`**. No fresh
+  inventory. Still dead / stale.
+
+Decision: neither source is built. Phase 1 stays cancelled; OLX remains the
+sole live phase-1 source.

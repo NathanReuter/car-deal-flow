@@ -2,6 +2,9 @@ import { CarsTableView } from "@/components/cars/cars-table-view";
 import { FipeSyncAllButton } from "@/components/cars/fipe-sync-all-button";
 import { getAllBundles } from "@/lib/aggregate";
 
+// Reads live pipeline data at request time; never prerender (no DB at build).
+export const dynamic = "force-dynamic";
+
 export default async function CarsPage() {
   const bundles = await getAllBundles();
 

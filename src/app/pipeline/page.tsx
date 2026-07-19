@@ -1,6 +1,9 @@
 import { KanbanBoard } from "@/components/pipeline/kanban-board";
 import { getAllBundles } from "@/lib/aggregate";
 
+// Reads live pipeline data at request time; never prerender (no DB at build).
+export const dynamic = "force-dynamic";
+
 export default async function PipelinePage() {
   const bundles = await getAllBundles();
 

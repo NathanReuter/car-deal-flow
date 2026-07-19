@@ -1,6 +1,9 @@
 import { ReportGenerator } from "@/components/reports/report-generator";
 import { getAllBundles } from "@/lib/aggregate";
 
+// Reads live pipeline data at request time; never prerender (no DB at build).
+export const dynamic = "force-dynamic";
+
 export default async function ReportsPage() {
   const bundles = await getAllBundles();
 

@@ -6,6 +6,9 @@ import { formatBRL, formatKm } from "@/lib/format";
 import { getAllBundles, getActiveGoal } from "@/lib/aggregate";
 import { isShortlistEligible } from "@/lib/shortlist";
 
+// Reads live pipeline data at request time; never prerender (no DB at build).
+export const dynamic = "force-dynamic";
+
 export default async function ShortlistPage() {
   const [allBundles, activeGoal] = await Promise.all([getAllBundles(), getActiveGoal()]);
   const bundles = allBundles

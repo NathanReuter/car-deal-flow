@@ -13,6 +13,9 @@ import { formatBRL, formatPct } from "@/lib/format";
 import { ACTIVE_PIPELINE_STAGES, PIPELINE_STAGES, type PipelineStage, type Verdict } from "@/lib/types";
 import { isShortlistHighlight } from "@/lib/shortlist";
 
+// Reads live pipeline data at request time; never prerender (no DB at build).
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const bundles = await getAllBundles();
 

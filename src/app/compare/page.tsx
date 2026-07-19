@@ -1,6 +1,9 @@
 import { CompareView } from "@/components/compare/compare-view";
 import { getAllBundles } from "@/lib/aggregate";
 
+// Reads live pipeline data at request time; never prerender (no DB at build).
+export const dynamic = "force-dynamic";
+
 export default async function ComparePage() {
   const bundles = await getAllBundles();
 

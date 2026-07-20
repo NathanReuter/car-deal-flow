@@ -49,7 +49,7 @@ export async function loadGoalHint(prisma: PrismaClient) {
 
 async function main() {
   const adapter = new PrismaBetterSqlite3({
-    url: process.env.DATABASE_URL ?? "file:./dev.db",
+    url: process.env.DATABASE_URL ?? "file:./prisma/dev.db",
   });
   const prisma = new PrismaClient({ adapter });
   try {

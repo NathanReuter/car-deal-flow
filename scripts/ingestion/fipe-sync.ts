@@ -65,7 +65,7 @@ export async function syncMissingFipe(prisma: PrismaClient): Promise<{ synced: n
 
 async function main() {
   const uninstall = installCachedFetch();
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
+  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
   const prisma = new PrismaClient({ adapter });
   try {
     await syncMissingFipe(prisma);

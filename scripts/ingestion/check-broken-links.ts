@@ -99,7 +99,7 @@ function parseArgs(argv: string[]): CheckBrokenLinksOptions {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
+  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
   const prisma = new PrismaClient({ adapter });
   try {
     const summary = await checkBrokenLinks(prisma, options);

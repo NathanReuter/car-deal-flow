@@ -1,0 +1,151 @@
+{
+  "_source": "https://napista.com.br/busca/carro/sao-paulo/2022/valor-abaixo-da-fipe",
+  "_fetchedAt": "2026-07-20",
+  "_note": "Extracted from __NEXT_DATA__ script tag. offersTotal=449, ps=48 per page.",
+  "searchResult": {
+    "offersTotal": 449,
+    "slug": "carro/sao-paulo/2022/valor-abaixo-da-fipe",
+    "canonicalUri": "carro/sao-paulo/2022/valor-abaixo-da-fipe",
+    "offers": [
+      {
+        "id": "e36ac616-1503-43e8-acff-52abca8b7221",
+        "versionName": "Land Rover Discovery Sport Se R-dyn 2.0 Si4 Flex",
+        "modelYear": 2022,
+        "manufacturedYear": 2022,
+        "mileage": 56166,
+        "isNotFinanciable": false,
+        "seller": "Auto Land Comercio De Veiculos Eireli",
+        "price": 199900,
+        "photos": [
+          {
+            "id": "bfd67690-b98f-4f84-80fb-0ca37d0ae738",
+            "url": "https://storage.napista.com.br/static/photos/e36ac616-1503-43e8-acff-52abca8b7221_bfd67690-b98f-4f84-80fb-0ca37d0ae738",
+            "order": 0,
+            "externalUrl": "https://static2.meucarronovo.com.br/fotos/static/photos/e36ac616-1503-43e8-acff-52abca8b7221_bfd67690-b98f-4f84-80fb-0ca37d0ae738"
+          }
+        ],
+        "location": {
+          "city": "São Paulo",
+          "state": "São Paulo",
+          "neighborhood": "Saúde",
+          "street": "Avenida Bosque da Saúde",
+          "number": "1061",
+          "complement": "Auto Land",
+          "geoLocation": {
+            "latitude": -23.6122954,
+            "longitude": -46.6282225
+          },
+          "uf": "SP"
+        },
+        "createdDate": "2026-04-09T12:38:17.312Z",
+        "equipments": [],
+        "vehicleImplements": [],
+        "badges": [],
+        "features": [],
+        "sellerId": "841fab18-e6f2-433a-bda1-c3af78a92254",
+        "makeName": "Land Rover",
+        "modelName": "DISCOVERY SPORT",
+        "compMakeModelName": "Land Rover Discovery",
+        "compVersionName": "Sport Se R-dyn 2.0 Si4 Flex",
+        "sellerCommercialPartnerCode": 425145,
+        "newVehicle": false,
+        "activeProductTags": []
+      },
+      {
+        "id": "69e10a26-cca7-4f25-ba84-82f143221426",
+        "versionName": "Chevrolet Onix Hatch 1.0 12v Tb Flex 5p Aut.",
+        "modelYear": 2022,
+        "manufacturedYear": 2022,
+        "mileage": 125000,
+        "isNotFinanciable": false,
+        "seller": "A2 Motors Multimarcas",
+        "price": 63999,
+        "photos": [
+          {
+            "id": "efc1d824-f0b1-4241-b01a-ea1cb0c624b1",
+            "url": "https://storage.napista.com.br/static/photos/69e10a26-cca7-4f25-ba84-82f143221426_efc1d824-f0b1-4241-b01a-ea1cb0c624b1",
+            "order": 0,
+            "externalUrl": "https://static2.meucarronovo.com.br/fotos/static/photos/69e10a26-cca7-4f25-ba84-82f143221426_efc1d824-f0b1-4241-b01a-ea1cb0c624b1"
+          }
+        ],
+        "location": {
+          "city": "São Paulo",
+          "state": "São Paulo",
+          "neighborhood": "Vila Almeida",
+          "street": "das Nações Unidas",
+          "number": "18801",
+          "complement": "laja 01",
+          "geoLocation": {
+            "latitude": -23.6799089,
+            "longitude": -46.6964938
+          },
+          "uf": "SP"
+        },
+        "createdDate": "2026-05-06T12:53:34.187Z",
+        "equipments": [],
+        "vehicleImplements": [],
+        "badges": [],
+        "features": [],
+        "sellerId": "c7f9df35-7547-41e1-895b-180afe091849",
+        "makeName": "Chevrolet",
+        "modelName": "ONIX",
+        "compMakeModelName": "Chevrolet Onix",
+        "compVersionName": "Hatch 1.0 12v Tb Flex 5p Aut.",
+        "sellerCommercialPartnerCode": 449530,
+        "newVehicle": false,
+        "activeProductTags": []
+      },
+      {
+        "id": "dbe5edc1-3eac-4158-8951-84259189a292",
+        "versionName": "Toyota Hilux 2.8 Tdi Cd Std Power Pack 4wd",
+        "modelYear": 2022,
+        "manufacturedYear": 2022,
+        "mileage": 98839,
+        "isNotFinanciable": false,
+        "seller": "Top Car",
+        "price": 155900,
+        "photos": [
+          {
+            "id": "6a6fd14f-cb77-4767-803b-3144f179caa2",
+            "url": "https://storage.napista.com.br/static/photos/dbe5edc1-3eac-4158-8951-84259189a292_6a6fd14f-cb77-4767-803b-3144f179caa2",
+            "order": 0,
+            "externalUrl": "https://static2.meucarronovo.com.br/fotos/static/photos/dbe5edc1-3eac-4158-8951-84259189a292_6a6fd14f-cb77-4767-803b-3144f179caa2"
+          }
+        ],
+        "location": {
+          "city": "São Paulo",
+          "state": "São Paulo",
+          "neighborhood": "Parque Alves de Lima",
+          "street": "Avenida Guarapiranga",
+          "number": "1905",
+          "complement": "",
+          "geoLocation": {
+            "latitude": -23.6681058,
+            "longitude": -46.7308355
+          },
+          "uf": "SP"
+        },
+        "createdDate": "2026-06-27T13:08:32.658Z",
+        "equipments": [],
+        "vehicleImplements": [],
+        "badges": [],
+        "features": [],
+        "sellerId": "fda18eba-3062-4b4b-bdb0-b0552aa5db43",
+        "makeName": "Toyota",
+        "modelName": "HILUX",
+        "compMakeModelName": "Toyota Hilux",
+        "compVersionName": "2.8 Tdi Cd Std Power Pack 4wd",
+        "sellerCommercialPartnerCode": 14519,
+        "newVehicle": false,
+        "activeProductTags": []
+      }
+    ]
+  },
+  "searchParams": {
+    "nlTerms": "carro 2022 valor abaixo da fipe em sao paulo",
+    "vehicleType": "CAR",
+    "ps": 48,
+    "pn": 1,
+    "order": "RELEVANCE"
+  }
+}

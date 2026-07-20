@@ -237,6 +237,7 @@ export function olxToWriteLead(ad: OlxAdDetail): OlxToWriteLeadResult {
       color: ad.color ?? undefined,
       sourceUrl: ad.url,
       sourcePlatform: "OLX",
+      sourceChannel: "classifieds",
       notes,
     },
   };

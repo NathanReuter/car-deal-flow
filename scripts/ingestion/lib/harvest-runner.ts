@@ -132,6 +132,8 @@ function buildWriteLeadArgs(input: WriteLeadInput): string[] {
   if (input.notes) args.push("--notes", input.notes);
   if (input.editalUrl) args.push("--edital-url", input.editalUrl);
   if (input.forceDamaged) args.push("--force-damaged");
+  if (input.sourceChannel) args.push("--source-channel", input.sourceChannel);
+  if (input.confidence) args.push("--confidence", input.confidence);
 
   return args;
 }

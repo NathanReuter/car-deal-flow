@@ -5,11 +5,13 @@ import type {
   ConditionField,
   DealPhase,
   FuelType,
+  LeadConfidence,
   PipelineStage,
   RepasseUrgency,
   RiskCheckItem,
   RiskCheckKey,
   SellerType,
+  SourceChannel,
   Transmission,
 } from "../../src/lib/types";
 import { normalizeChassis, normalizePlate, isMergeablePlate } from "./identity";
@@ -66,6 +68,30 @@ const VALID_BODY_TYPES: BodyType[] = [
   "wagon",
 ];
 
+const VALID_SOURCE_CHANNELS: SourceChannel[] = [
+  "classifieds",
+  "aggregator",
+  "messaging_group",
+  "forum",
+  "storefront",
+  "auction_house",
+];
+
+const VALID_CONFIDENCES: LeadConfidence[] = ["low", "medium", "high"];
+
+const AUCTION_HOUSE_PLATFORMS = new Set([
+  "Bradesco Vitrine",
+  "VIP Leilões",
+  "BIDchain",
+  "MGL",
+  "Santander Retomados",
+]);
+
+/** Returns the default SourceChannel for a given sourcePlatform name. */
+export function defaultChannelForPlatform(platform: string): SourceChannel {
+  return AUCTION_HOUSE_PLATFORMS.has(platform) ? "auction_house" : "classifieds";
+}
+
 const PRICE_SEMANTICS_NOTE = "askingPriceBRL = minimum bid (lance mínimo).";
 
 /** Stages that may be unconditionally reset to new_lead on re-harvest so the goal filter can re-run. */
@@ -110,6 +136,10 @@ export interface WriteLeadInput {
   auctionDate?: Date | null;
   /** Bypass damage/sinistro gate (owner override only). */
   forceDamaged?: boolean;
+  /** Channel through which the lead was sourced. Defaults to defaultChannelForPlatform(sourcePlatform). */
+  sourceChannel?: SourceChannel;
+  /** Confidence in the lead data quality. Defaults to "high". */
+  confidence?: LeadConfidence;
 }
 
 export class WriteLeadError extends Error {}
@@ -362,6 +392,17 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     throw new WriteLeadError(`Invalid or missing bodyType: ${String(bodyType)}`);
   }
 
+  if (input.sourceChannel !== undefined && !VALID_SOURCE_CHANNELS.includes(input.sourceChannel)) {
+    throw new WriteLeadError(`Invalid sourceChannel: ${String(input.sourceChannel)}`);
+  }
+  if (input.confidence !== undefined && !VALID_CONFIDENCES.includes(input.confidence)) {
+    throw new WriteLeadError(`Invalid confidence: ${String(input.confidence)}`);
+  }
+
+  const resolvedSourceChannel: SourceChannel =
+    input.sourceChannel ?? defaultChannelForPlatform(sourcePlatform);
+  const resolvedConfidence: LeadConfidence = input.confidence ?? "high";
+
   if (input.editalUrl !== undefined && input.editalUrl.trim() !== "") {
     requireHttpUrl(input.editalUrl.trim(), "editalUrl");
   }
@@ -570,6 +611,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       ...listingFieldsBase,
       sourceUrl,
       sourcePlatform,
+      sourceChannel: resolvedSourceChannel,
+      confidence: resolvedConfidence,
       plate: plateProvided ? plate! : null,
       chassis: chassisProvided ? chassis! : null,
       notes,
@@ -782,6 +825,8 @@ function parseArgs(argv: string[]): WriteLeadInput {
     editalUrl: get("--edital-url"),
     auctionDate,
     forceDamaged: argv.includes("--force-damaged"),
+    sourceChannel: get("--source-channel") as SourceChannel | undefined,
+    confidence: get("--confidence") as LeadConfidence | undefined,
   };
 }
 

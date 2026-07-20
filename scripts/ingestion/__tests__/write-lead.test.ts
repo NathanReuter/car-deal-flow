@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDb, type TestDbContext } from "../../risk-checks/__tests__/test-db";
-import { writeLead, WriteLeadError } from "../write-lead";
+import { writeLead, WriteLeadError, defaultChannelForPlatform } from "../write-lead";
 import type { RiskCheckItem } from "../../../src/lib/types";
 
 const baseInput = {
@@ -557,5 +557,114 @@ describe("writeLead repasse (pre_repossession)", () => {
     const car = await ctx.prisma.car.findUnique({ where: { id: first.carId } });
     expect(car!.dealPhase).toBe("auction");
     expect(car!.notes).toMatch(/reapareceu em leilão/i);
+  });
+});
+
+describe("writeLead sourceChannel/confidence", () => {
+  let ctx: TestDbContext;
+
+  beforeEach(() => {
+    ctx = createTestDb();
+  });
+
+  afterEach(async () => {
+    await ctx.cleanup();
+  });
+
+  const baseAuction = {
+    brand: "Hyundai",
+    model: "Creta",
+    year: 2022,
+    askingPriceBRL: 95000,
+    sourcePlatform: "Bradesco Vitrine",
+    sellerType: "bank_recovery" as const,
+    bodyType: "suv" as const,
+  };
+
+  it("rejects invalid sourceChannel (WriteLeadError)", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...baseAuction,
+        sourceUrl: "https://vitrinebradesco.com.br/lot/ch-reject-1",
+        sourceChannel: "social_media" as never,
+      }),
+    ).rejects.toThrow(WriteLeadError);
+  });
+
+  it("rejects invalid confidence (WriteLeadError)", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...baseAuction,
+        sourceUrl: "https://vitrinebradesco.com.br/lot/ch-reject-2",
+        confidence: "very_high" as never,
+      }),
+    ).rejects.toThrow(WriteLeadError);
+  });
+
+  it("create with explicit sourceChannel/confidence persists them", async () => {
+    const result = await writeLead(ctx.prisma, {
+      ...baseAuction,
+      sourceUrl: "https://vitrinebradesco.com.br/lot/ch-explicit-1",
+      sourceChannel: "auction_house",
+      confidence: "medium",
+    });
+    expect(result.created).toBe(true);
+    const car = await ctx.prisma.car.findUnique({ where: { id: result.carId } });
+    expect(car!.sourceChannel).toBe("auction_house");
+    expect(car!.confidence).toBe("medium");
+  });
+
+  it("OLX platform defaults to classifieds/high; MGL defaults to auction_house/high", async () => {
+    const olxResult = await writeLead(ctx.prisma, {
+      ...baseAuction,
+      sourceUrl: "https://olx.com.br/anuncio/creta-1",
+      sourcePlatform: "OLX",
+    });
+    const olxCar = await ctx.prisma.car.findUnique({ where: { id: olxResult.carId } });
+    expect(olxCar!.sourceChannel).toBe("classifieds");
+    expect(olxCar!.confidence).toBe("high");
+
+    const mglResult = await writeLead(ctx.prisma, {
+      ...baseAuction,
+      sourceUrl: "https://mgl.com.br/lot/creta-2",
+      sourcePlatform: "MGL",
+    });
+    const mglCar = await ctx.prisma.car.findUnique({ where: { id: mglResult.carId } });
+    expect(mglCar!.sourceChannel).toBe("auction_house");
+    expect(mglCar!.confidence).toBe("high");
+  });
+
+  it("defaultChannelForPlatform: auction platforms → auction_house; OLX/other → classifieds", () => {
+    expect(defaultChannelForPlatform("Bradesco Vitrine")).toBe("auction_house");
+    expect(defaultChannelForPlatform("VIP Leilões")).toBe("auction_house");
+    expect(defaultChannelForPlatform("BIDchain")).toBe("auction_house");
+    expect(defaultChannelForPlatform("MGL")).toBe("auction_house");
+    expect(defaultChannelForPlatform("Santander Retomados")).toBe("auction_house");
+    expect(defaultChannelForPlatform("OLX")).toBe("classifieds");
+    expect(defaultChannelForPlatform("SomeUnknownPlatform")).toBe("classifieds");
+  });
+
+  it("URL-dedup update does not overwrite existing sourceChannel/confidence", async () => {
+    const first = await writeLead(ctx.prisma, {
+      ...baseAuction,
+      sourceUrl: "https://vitrinebradesco.com.br/lot/ch-dedup-1",
+      sourceChannel: "auction_house",
+      confidence: "medium",
+    });
+    expect(first.created).toBe(true);
+
+    // Re-harvest the same URL without specifying channel/confidence — defaults would be auction_house/high
+    const second = await writeLead(ctx.prisma, {
+      ...baseAuction,
+      sourceUrl: "https://vitrinebradesco.com.br/lot/ch-dedup-1",
+      askingPriceBRL: 90000,
+      // No sourceChannel or confidence — do not overwrite
+    });
+    expect(second.updated).toBe(true);
+    expect(second.carId).toBe(first.carId);
+
+    const car = await ctx.prisma.car.findUnique({ where: { id: first.carId } });
+    expect(car!.sourceChannel).toBe("auction_house");
+    expect(car!.confidence).toBe("medium");
   });
 });

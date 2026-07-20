@@ -59,19 +59,24 @@ Status: **Planned (2026-07-20)** — awaiting Phase 0 start
 
 ---
 
-## Phase 5: Cadence, skills, docs (gated: ≥3 clean supervised runs per source)
+## Phase 5: Cadence, skills, docs — DONE (gate overridden by user)
 
-- [ ] **Task 5.1** `cadence-schedule.ts` entries (napista daily; webmotors M/W/F; storefronts Tu/F) + `.claude/skills/harvest-napista|webmotors|storefronts` + update plan/todo
+- [x] **Task 5.1** `cadence-schedule.ts` entries (napista daily; webmotors M/W/F; storefronts Tu/F) + `.claude/skills/harvest-napista|webmotors|storefronts` (commit b06f513, 11/11 tests)
 
 ### Checkpoint C4
-- [ ] `cadence-schedule.test.ts` + `run-cadence.test.ts` green; cadence dry-run for future date reviewed
+- [x] `cadence-schedule.test.ts` + `run-cadence.test.ts` green; cadence dry-run verified (Mon lists napista+webmotors, storefronts absent)
 
 ---
 
-## Phase 6: Spikes (docs only; anytime after C1)
+## Phase 6: Spikes (FUTURE WORK — blocked on human prerequisites)
 
 - [ ] **Task 6.1** WhatsApp/Telegram listener spike → `docs/spikes/messaging-listener-spike.md` (needs dedicated phone number — human)
 - [ ] **Task 6.2** Facebook Marketplace RapidAPI spike → `docs/spikes/facebook-marketplace-spike.md` (needs RapidAPI key — human)
+
+## Future Work (see tasks/plan.md → Future Work)
+
+- [ ] **FW-2** Cars-view UI scaling — design done in `docs/ui-cars-view-scaling-plan.md`; build deferred
+- [ ] **FW-3** Deferred Minor review findings cleanup pass (NaPista pagination validation, Webmotors dedup, storefront slug/warn, OLX dead const)
 
 ---
 

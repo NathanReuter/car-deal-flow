@@ -139,10 +139,11 @@ Build `storefront-sites.ts` (config: id, name, listUrl, selector/regex hints, ci
 
 **CHECKPOINT C3**: full suite green · every registered source passes `--dry-run --limit 5` · cadence untouched · human spot-check of one limited real run per source in UI.
 
-### Phase 5 — Cadence, skills, docs (serial convergence)
+### Phase 5 — Cadence, skills, docs (serial convergence) — DONE (2026-07-20)
 
-**Task 5.1 — Gated cadence + skill registration (S)** — deps: C3 + ≥3 clean supervised runs per source
-Add to `CadenceSource` + `SCHEDULE` in `lib/cadence-schedule.ts` (proposal: napista daily; webmotors Mon/Wed/Fri; storefronts Tue/Fri). Create `.claude/skills/harvest-napista`, `harvest-webmotors`, `harvest-storefronts` SKILL.md mirroring `harvest-repasse`. Update this file + `tasks/todo.md`.
+**Task 5.1 — Cadence + skill registration (S)** — ✅ DONE
+> Note: the "≥3 clean supervised runs" gate was **overridden by the user** — cadence wired immediately after the 4 harvesters passed live dry-runs.
+Added napista (daily), webmotors (Mon/Wed/Fri), storefronts (Tue/Fri) to `CadenceSource` + `SCHEDULE` in `lib/cadence-schedule.ts`; `run-cadence.ts` picks them up automatically. Created `.claude/skills/harvest-napista`, `harvest-webmotors`, `harvest-storefronts` SKILL.md.
 - Verify: `npx vitest run scripts/ingestion/__tests__/cadence-schedule.test.ts scripts/ingestion/__tests__/run-cadence.test.ts`; cadence dry-run for a future date.
 
 ### Phase 6 — Spikes (independent; anytime after C1; docs only, no pipeline code)
@@ -180,3 +181,22 @@ Trial RapidAPI FB scraper free tier (needs key — human provisioning); repasse 
 3. `npm run harvest -- --source <each> --dry-run --limit 5` for olx, napista, webmotors, storefronts
 4. One real `--limit 20` run per new source → review in UI: phase/channel/confidence badges, no invented fields, goal filter applied
 5. Cadence dry-run for a future date shows new sources only after Task 5.1
+
+## Future Work (registered 2026-07-20)
+
+Phases 0–5 shipped (PR #7). The following are deferred:
+
+### FW-1 — Phase 6 spikes (blocked on human prerequisites)
+- **Task 6.1 WhatsApp/Telegram listener** — needs a **dedicated phone number** before it can start. Deliverable: `docs/spikes/messaging-listener-spike.md`.
+- **Task 6.2 Facebook Marketplace RapidAPI** — needs a **RapidAPI key/account**. Deliverable: `docs/spikes/facebook-marketplace-spike.md`.
+
+### FW-2 — Cars-view UI scaling (design done, build deferred)
+Full design plan: **`docs/ui-cars-view-scaling-plan.md`**. The current "All Vehicles" view loads every car client-side and won't survive 50k+ rows. Plan covers server-side filter/paginate (URL-param driven), new filters (sourceChannel, confidence, state, FIPE-delta), sortable headers, skeleton/empty states, mobile card layout, and optional score/verdict persistence for SQL sort. Open decisions flagged in that doc.
+
+### FW-3 — Deferred Minor findings (from task + final reviews; all non-blocking)
+Tracked in the SDD ledger. Notable ones worth a cleanup pass:
+- **NaPista**: validate `?pn=N` pagination against page 2+ before the first *full* harvest (degrades gracefully today — stops on empty); drop `throttleFetch` from the dry-run loop.
+- **Webmotors**: de-duplicate `fetchApiPage`/dead `listWebmotorsAds` between `webmotors-list.ts` and `webmotors-harvest.ts` (dead-code drift); transmission diacritic normalization.
+- **Storefronts**: `MODEL_TO_BRAND` silent-drop for exotic brands (add a `console.warn`); slug accent normalization for the Compra Certa `sourceUrl`.
+- **Foundation**: add a test + intent comment for the identity-MERGE no-overwrite of `sourceChannel`/`confidence`.
+- **OLX**: remove dead `OLX_SEARCH_BASE`; optional `--regions` CLI flag.

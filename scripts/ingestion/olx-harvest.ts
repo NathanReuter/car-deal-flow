@@ -114,6 +114,8 @@ export async function harvestOlxAds(options: {
         bumpSkip(summary, skipReason ?? "skipped");
         continue;
       }
+      // OLX ads are self-reported owner ads — medium confidence by default.
+      input.confidence = "medium";
 
       if (hasReachedCeiling(summary, ceiling)) {
         bumpSkip(summary, "ceiling");

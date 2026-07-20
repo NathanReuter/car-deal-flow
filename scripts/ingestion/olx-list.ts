@@ -26,7 +26,52 @@ export const OLX_QUERIES = [
   "repasse financiamento",
   "assumo financiamento",
   "passo financiamento",
+  "transferir financiamento",
+  "veículo já financiado",
+  "quitar e transferir",
+  "aceito repasse",
 ];
+
+/**
+ * OLX regional subdomains to search, ordered south-first (buyer is in SC;
+ * southern cars are cheaper to inspect/transport). www is the national
+ * fallback and comes last since it heavily overlaps the regional results.
+ */
+export const OLX_REGION_HOSTS = [
+  "sc",
+  "pr",
+  "rs",
+  "sp",
+  "rj",
+  "mg",
+  "pb",
+  "pe",
+  "ce",
+  "rn",
+  "www",
+];
+
+const OLX_PATH = "/autos-e-pecas/carros-vans-e-utilitarios";
+
+/** Builds the OLX search URL for a given subdomain, query, and page number. */
+export function buildOlxSearchUrl(host: string, query: string, pageNo: number): string {
+  const base = `https://${host}.olx.com.br${OLX_PATH}`;
+  const qs = `?q=${encodeURIComponent(query)}` + (pageNo > 1 ? `&o=${pageNo}` : "");
+  return base + qs;
+}
+
+/** Deduplicate OlxSearchCards by listId — first occurrence (lowest-index region) wins. */
+export function dedupeByListId(cards: OlxSearchCard[]): OlxSearchCard[] {
+  const seen = new Set<string>();
+  const out: OlxSearchCard[] = [];
+  for (const card of cards) {
+    if (!seen.has(card.listId)) {
+      seen.add(card.listId);
+      out.push(card);
+    }
+  }
+  return out;
+}
 
 export interface OlxSearchCard {
   url: string;
@@ -69,31 +114,34 @@ export function parseOlxSearchCards(html: string): OlxSearchCard[] {
 export async function listOlxAds(options: {
   queries?: string[];
   maxPagesPerQuery?: number;
+  regions?: string[];
   page: Page;
 }): Promise<OlxListResult> {
   const queries = options.queries ?? OLX_QUERIES;
-  const maxPages = options.maxPagesPerQuery ?? 5;
+  const maxPages = options.maxPagesPerQuery ?? 8;
+  const regions = options.regions ?? OLX_REGION_HOSTS;
+  // Cross-region dedupe: first occurrence (earliest region in the ordered list) wins.
   const byId = new Map<string, OlxSearchCard>();
 
-  for (const query of queries) {
-    for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
-      const url =
-        `${OLX_SEARCH_BASE}?q=${encodeURIComponent(query)}` +
-        (pageNo > 1 ? `&o=${pageNo}` : "");
-      await options.page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await options.page.waitForTimeout(2500);
-      const cards = parseOlxSearchCards(await options.page.content());
-      if (cards.length === 0) break;
-      let newOnPage = 0;
-      for (const card of cards) {
-        if (!byId.has(card.listId)) {
-          byId.set(card.listId, card);
-          newOnPage++;
+  for (const host of regions) {
+    for (const query of queries) {
+      for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+        const url = buildOlxSearchUrl(host, query, pageNo);
+        await options.page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+        await options.page.waitForTimeout(2500);
+        const cards = parseOlxSearchCards(await options.page.content());
+        if (cards.length === 0) break;
+        let newOnPage = 0;
+        for (const card of cards) {
+          if (!byId.has(card.listId)) {
+            byId.set(card.listId, card);
+            newOnPage++;
+          }
         }
+        // A page with nothing new means we ran past the end of this query.
+        if (newOnPage === 0) break;
+        await throttleFetch();
       }
-      // A page with nothing new means we ran past the end of this query.
-      if (newOnPage === 0) break;
-      await throttleFetch();
     }
   }
 
@@ -106,7 +154,7 @@ export async function listOlxAds(options: {
 
 function parseArgs(argv: string[]) {
   let out = "/tmp/olx-harvest/list.json";
-  let maxPages = 5;
+  let maxPages = 8;
   const extraQueries: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];

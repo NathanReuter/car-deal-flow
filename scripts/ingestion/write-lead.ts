@@ -194,7 +194,7 @@ function resolvePricing(input: WriteLeadInput): {
   repasseColumns: Partial<RepasseColumns>;
 } {
   const dealPhase = input.dealPhase ?? "auction";
-  if (dealPhase !== "auction" && dealPhase !== "pre_repossession") {
+  if (dealPhase !== "auction" && dealPhase !== "pre_repossession" && dealPhase !== "market") {
     throw new WriteLeadError(`Invalid dealPhase: ${String(dealPhase)}`);
   }
   if (
@@ -204,7 +204,13 @@ function resolvePricing(input: WriteLeadInput): {
     throw new WriteLeadError(`Invalid repasseUrgency: ${String(input.repasseUrgency)}`);
   }
 
-  if (dealPhase !== "pre_repossession") {
+  if (dealPhase === "auction" || dealPhase === "market") {
+    // Repasse economics fields are forbidden for auction and market leads.
+    if (input.entryAskBRL !== undefined && input.entryAskBRL !== null) {
+      throw new WriteLeadError(
+        `${dealPhase} leads must not supply entryAskBRL — repasse fields are forbidden.`,
+      );
+    }
     return {
       dealPhase,
       askingPriceBRL: requireNumber(input.askingPriceBRL, "askingPriceBRL"),

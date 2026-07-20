@@ -22,12 +22,20 @@ export function resolveDealPhase(dealPhase: DealPhase | undefined): DealPhase {
   return dealPhase ?? "auction";
 }
 
-/** Calm label distinguishing Leilão vs Pré-apreensão; carries no urgency color. */
+/** Calm label distinguishing Leilão vs Pré-apreensão vs Mercado; carries no urgency color. */
 export function phaseBadge(dealPhase: DealPhase | undefined): BadgeSpec {
   const phase = resolveDealPhase(dealPhase);
+  let variant: BadgeVariant;
+  if (phase === "pre_repossession") {
+    variant = "outline";
+  } else if (phase === "market") {
+    variant = "success";
+  } else {
+    variant = "neutral";
+  }
   return {
     label: DEAL_PHASE_LABEL[phase],
-    variant: phase === "pre_repossession" ? "outline" : "neutral",
+    variant,
   };
 }
 

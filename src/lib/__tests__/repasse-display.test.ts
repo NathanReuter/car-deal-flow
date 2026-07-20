@@ -37,6 +37,12 @@ describe("phaseBadge", () => {
   it("treats undefined as auction", () => {
     expect(phaseBadge(undefined).label).toBe("Leilão");
   });
+  it("labels market as Mercado (abaixo da FIPE) with a distinct variant", () => {
+    const badge = phaseBadge("market");
+    expect(badge.label).toBe("Mercado (abaixo da FIPE)");
+    expect(badge.variant).not.toBe("neutral");
+    expect(badge.variant).not.toBe("outline");
+  });
 });
 
 describe("urgencyBadge", () => {

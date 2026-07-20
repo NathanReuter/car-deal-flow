@@ -61,7 +61,7 @@ export const SELLER_TYPE_LABEL: Record<SellerType, string> = {
 };
 
 /** Where in the repossession lifecycle the deal sits. */
-export type DealPhase = "pre_repossession" | "auction";
+export type DealPhase = "pre_repossession" | "auction" | "market";
 
 export type SourceChannel =
   | "classifieds"
@@ -91,6 +91,7 @@ export const CONFIDENCE_LABEL: Record<LeadConfidence, string> = {
 export const DEAL_PHASE_LABEL: Record<DealPhase, string> = {
   pre_repossession: "Pré-apreensão",
   auction: "Leilão",
+  market: "Mercado (abaixo da FIPE)",
 };
 
 export type RepasseUrgency = "high" | "medium" | "low";

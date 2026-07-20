@@ -14,16 +14,17 @@ import { harvestOlxAds } from "./olx-harvest";
 
 export type HarvestSource = "bradesco" | "vip" | "bidchain" | "mgl" | "santander" | "olx";
 
-export type HarvestPhase = "pre" | "auction" | "all";
+export type HarvestPhase = "pre" | "auction" | "market" | "all";
 
 /** Sources by deal phase; "olx" harvests pre-repossession repasse ads. */
 export const PHASE_SOURCES: Record<Exclude<HarvestPhase, "all">, HarvestSource[]> = {
   auction: ["bradesco", "vip", "bidchain", "mgl", "santander"],
   pre: ["olx"],
+  market: [],
 };
 
 export function sourcesForPhase(phase: HarvestPhase): HarvestSource[] {
-  if (phase === "all") return [...PHASE_SOURCES.auction, ...PHASE_SOURCES.pre];
+  if (phase === "all") return [...PHASE_SOURCES.auction, ...PHASE_SOURCES.pre, ...PHASE_SOURCES.market];
   return [...PHASE_SOURCES[phase]];
 }
 
@@ -54,8 +55,8 @@ export function parseHarvestSource(raw: string): HarvestSource {
 }
 
 export function parseHarvestPhase(raw: string): HarvestPhase {
-  if (raw !== "pre" && raw !== "auction" && raw !== "all") {
-    throw new Error(`Invalid --phase "${raw}". Use one of: pre, auction, all`);
+  if (raw !== "pre" && raw !== "auction" && raw !== "market" && raw !== "all") {
+    throw new Error(`Invalid --phase "${raw}". Use one of: pre, auction, market, all`);
   }
   return raw;
 }

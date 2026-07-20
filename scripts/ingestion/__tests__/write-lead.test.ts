@@ -668,3 +668,56 @@ describe("writeLead sourceChannel/confidence", () => {
     expect(car!.confidence).toBe("medium");
   });
 });
+
+describe("writeLead market phase", () => {
+  let ctx: TestDbContext;
+
+  beforeEach(() => {
+    ctx = createTestDb();
+  });
+
+  afterEach(async () => {
+    await ctx.cleanup();
+  });
+
+  const marketInput = {
+    brand: "Volkswagen",
+    model: "Nivus",
+    year: 2023,
+    askingPriceBRL: 82000,
+    sourceUrl: "https://napista.com.br/anuncio/nivus-1",
+    sourcePlatform: "NaPista",
+    sellerType: "dealer" as const,
+    bodyType: "suv" as const,
+    dealPhase: "market" as const,
+  };
+
+  it("creates a market lead with askingPriceBRL and persists dealPhase 'market'", async () => {
+    const result = await writeLead(ctx.prisma, marketInput);
+    expect(result.created).toBe(true);
+
+    const car = await ctx.prisma.car.findUnique({ where: { id: result.carId } });
+    expect(car!.dealPhase).toBe("market");
+    expect(car!.askingPriceBRL).toBe(82000);
+  });
+
+  it("rejects a market lead that carries entryAskBRL (repasse fields forbidden)", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...marketInput,
+        sourceUrl: "https://napista.com.br/anuncio/nivus-2",
+        entryAskBRL: 20000,
+      }),
+    ).rejects.toThrow(WriteLeadError);
+  });
+
+  it("rejects a market lead missing askingPriceBRL", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...marketInput,
+        sourceUrl: "https://napista.com.br/anuncio/nivus-3",
+        askingPriceBRL: undefined,
+      }),
+    ).rejects.toThrow(WriteLeadError);
+  });
+});

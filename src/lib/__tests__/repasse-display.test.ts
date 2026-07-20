@@ -3,6 +3,7 @@ import {
   resolveDealPhase,
   phaseBadge,
   urgencyBadge,
+  confidenceBadge,
   matchesPhase,
   formatRepasseBRL,
   formatInstallmentPlan,
@@ -60,6 +61,24 @@ describe("urgencyBadge", () => {
   });
   it("maps low to neutral", () => {
     expect(urgencyBadge("low")).toEqual({ label: "Urgência baixa", variant: "neutral" });
+  });
+});
+
+describe("confidenceBadge", () => {
+  it("returns non-null with a distinct variant for 'low'", () => {
+    const badge = confidenceBadge("low");
+    expect(badge).not.toBeNull();
+    expect(badge!.variant).not.toBe("neutral");
+  });
+  it("returns non-null for 'medium'", () => {
+    const badge = confidenceBadge("medium");
+    expect(badge).not.toBeNull();
+  });
+  it("returns null for 'high' (high is the default/uninteresting)", () => {
+    expect(confidenceBadge("high")).toBeNull();
+  });
+  it("returns null for undefined", () => {
+    expect(confidenceBadge(undefined)).toBeNull();
   });
 });
 

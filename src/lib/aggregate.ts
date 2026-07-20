@@ -97,6 +97,8 @@ function toCar(row: DbCarWithRelations): Car {
     stageReason: row.stageReason ?? undefined,
     fipeValueBRL: row.fipeValueBRL,
     dealPhase: row.dealPhase as Car["dealPhase"],
+    sourceChannel: (row.sourceChannel as Car["sourceChannel"]) ?? undefined,
+    confidence: (row.confidence as Car["confidence"]) ?? undefined,
     repasse:
       row.dealPhase === "pre_repossession"
         ? {

@@ -170,6 +170,10 @@ export interface Car {
   dealPhase?: DealPhase;
   /** Present only for pre_repossession leads. */
   repasse?: RepasseInfo;
+  /** Where the lead originated (undefined on legacy rows). */
+  sourceChannel?: SourceChannel;
+  /** Harvester confidence in the lead data (undefined on legacy rows). */
+  confidence?: LeadConfidence;
 }
 
 // ---------------------------------------------------------------------------

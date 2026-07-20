@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckStatusBadge } from "@/components/domain/check-status-badge";
 import { UrgencyBadge } from "@/components/domain/urgency-badge";
+import { ConfidenceBadge } from "@/components/domain/confidence-badge";
 import { formatBRL, formatDate, formatFipe, formatKm, formatPct } from "@/lib/format";
 import {
   anchorPriceLabel,
@@ -15,7 +16,7 @@ import {
   formatInstallmentPlan,
   formatRepasseBRL,
 } from "@/lib/repasse-display";
-import { RISK_CHECK_LABEL } from "@/lib/types";
+import { RISK_CHECK_LABEL, SOURCE_CHANNEL_LABEL } from "@/lib/types";
 import type { CarBundle } from "@/lib/aggregate";
 import { syncFipeValue, type FipeSyncResult } from "@/lib/actions/fipe-sync";
 import { CheckCircle2, ExternalLink, RefreshCw, XCircle } from "lucide-react";
@@ -69,6 +70,24 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
             <Field label="Color" value={car.color} />
             <Field label="Plate" value={car.plate ?? "—"} />
             <Field label="Chassis" value={car.chassis ?? "—"} />
+            {car.sourceChannel && (
+              <Field
+                label="Source channel"
+                value={SOURCE_CHANNEL_LABEL[car.sourceChannel]}
+              />
+            )}
+            {car.confidence && (
+              <div>
+                <span className="text-xs font-medium text-text-muted">Lead confidence</span>
+                <div className="mt-0.5">
+                  {car.confidence === "high" ? (
+                    <span className="text-sm text-text-primary">Alta</span>
+                  ) : (
+                    <ConfidenceBadge confidence={car.confidence} />
+                  )}
+                </div>
+              </div>
+            )}
             <div className="sm:col-span-2 lg:col-span-3">
               <span className="text-xs font-medium text-text-muted">Sources</span>
               <ul className="mt-1 flex flex-col gap-1">

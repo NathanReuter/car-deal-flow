@@ -1,8 +1,10 @@
 import { formatBRL } from "@/lib/format";
 import {
+  CONFIDENCE_LABEL,
   DEAL_PHASE_LABEL,
   type Car,
   type DealPhase,
+  type LeadConfidence,
   type RepasseUrgency,
 } from "@/lib/types";
 
@@ -51,6 +53,18 @@ export function urgencyBadge(
 ): BadgeSpec | null {
   if (urgency == null) return null;
   return URGENCY_BADGE[urgency];
+}
+
+/**
+ * Confidence badge: only show for low/medium — high is the default and uninteresting.
+ * Returns null for high or undefined (no badge needed).
+ */
+export function confidenceBadge(
+  confidence: LeadConfidence | undefined,
+): BadgeSpec | null {
+  if (confidence == null || confidence === "high") return null;
+  const variant: BadgeVariant = confidence === "low" ? "warning" : "neutral";
+  return { label: CONFIDENCE_LABEL[confidence], variant };
 }
 
 export type PhaseFilter = "all" | DealPhase;

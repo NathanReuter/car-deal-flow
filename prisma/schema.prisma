@@ -42,6 +42,11 @@ model Car {
   // "auction" (post-repossession lot) or "pre_repossession" (repasse ad).
   dealPhase String @default("auction")
 
+  // Channel the lead came from: classifieds | aggregator | messaging_group | forum | storefront | auction_house
+  sourceChannel String @default("classifieds")
+  // Confidence in the lead data: low | medium | high
+  confidence    String @default("high")
+
   // Repasse economics — pre_repossession only; null = not disclosed in the ad.
   entryAskBRL           Int?
   outstandingDebtBRL    Int?

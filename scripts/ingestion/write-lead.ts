@@ -211,6 +211,23 @@ function resolvePricing(input: WriteLeadInput): {
         `${dealPhase} leads must not supply entryAskBRL — repasse fields are forbidden.`,
       );
     }
+    if (dealPhase === "market") {
+      if (input.outstandingDebtBRL !== undefined && input.outstandingDebtBRL !== null) {
+        throw new WriteLeadError(
+          "market leads must not supply outstandingDebtBRL — repasse fields are forbidden.",
+        );
+      }
+      if (input.installmentBRL !== undefined && input.installmentBRL !== null) {
+        throw new WriteLeadError(
+          "market leads must not supply installmentBRL — repasse fields are forbidden.",
+        );
+      }
+      if (input.installmentsRemaining !== undefined && input.installmentsRemaining !== null) {
+        throw new WriteLeadError(
+          "market leads must not supply installmentsRemaining — repasse fields are forbidden.",
+        );
+      }
+    }
     return {
       dealPhase,
       askingPriceBRL: requireNumber(input.askingPriceBRL, "askingPriceBRL"),

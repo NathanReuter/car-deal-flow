@@ -720,4 +720,14 @@ describe("writeLead market phase", () => {
       }),
     ).rejects.toThrow(WriteLeadError);
   });
+
+  it("rejects a market lead that carries outstandingDebtBRL (repasse fields forbidden)", async () => {
+    await expect(
+      writeLead(ctx.prisma, {
+        ...marketInput,
+        sourceUrl: "https://napista.com.br/anuncio/nivus-4",
+        outstandingDebtBRL: 30000,
+      }),
+    ).rejects.toThrow(WriteLeadError);
+  });
 });

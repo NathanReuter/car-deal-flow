@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { detectDamageSignals } from "../../../src/lib/filters/damageSignals";
 import {
   parseClubeRepasseCards,
   parseCompracertaItems,
@@ -83,6 +84,22 @@ describe("parseClubeRepasseCards", () => {
     const result = parseClubeRepasseCards(noPriceHtml);
     expect(result).toHaveLength(0);
   });
+
+  // Finding 3 — parseBrlStorefront fallback removed (double-divide bug)
+  it("parseBrlStorefront: parses integer-only price string without dividing by 100", () => {
+    // "R$ 40500" has no comma or decimal — the old fallback would strip non-digits
+    // ("40500") then divide by 100 → 405 (wrong). The primary path parses it correctly.
+    const html = `
+      <div class="bg-white rounded-2xl border">
+        <a href="/detalhe/test-123"></a>
+        <h2 title="Gol">Gol</h2>
+        <p class="text-sm text-gray-600">Volkswagen Gol 2020/2021, manual</p>
+        <div class="text-2xl font-black">R$ 40500</div>
+      </div>`;
+    const result = parseClubeRepasseCards(html);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.askingPriceBRL).toBe(40500);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -130,5 +147,76 @@ describe("parseCompracertaItems", () => {
   it("skips items missing required fields (fail closed)", () => {
     const partial = JSON.stringify([{ id: "1", marca: "Foo" }]); // no modelo, ano, preco
     expect(parseCompracertaItems(partial)).toHaveLength(0);
+  });
+
+  // Finding 1 — damage gate (parser exposes versao+descricao; harvest gates on them)
+  it("exposes descricao and versao so the harvest can apply the damage gate", () => {
+    // A Compra Certa item whose descricao contains a damage term: the parser
+    // must surface those fields so the harvest loop can call detectDamageSignals
+    // and bump the 'damaged' skip counter (consistent with napista-parse.ts:81).
+    const damaged = JSON.stringify([
+      {
+        id: "99",
+        marca: "Fiat",
+        modelo: "Palio",
+        versao: "EX 1.0",
+        descricao: "sinistro de media monta",
+        ano: 2015,
+        km: 50000,
+        preco: 18000,
+        fipe: 22000,
+        status: "disponivel",
+      },
+    ]);
+    const items = parseCompracertaItems(damaged);
+    expect(items).toHaveLength(1); // parser passes it through
+    const item = items[0]!;
+    // The harvest damage gate: combine descricao + versao + model
+    const blob = [item.descricao, item.versao, item.model].filter(Boolean).join(" ");
+    expect(detectDamageSignals(blob).blocked).toBe(true);
+  });
+
+  it("damage gate: versao containing 'batido' is blocked by detectDamageSignals", () => {
+    const damaged = JSON.stringify([
+      {
+        id: "100",
+        marca: "Chevrolet",
+        modelo: "Onix",
+        versao: "BATIDO RESTAURADO 1.0",
+        descricao: "",
+        ano: 2019,
+        km: 80000,
+        preco: 25000,
+        fipe: 38000,
+        status: "disponivel",
+      },
+    ]);
+    const items = parseCompracertaItems(damaged);
+    expect(items).toHaveLength(1);
+    const item = items[0]!;
+    const blob = [item.descricao, item.versao, item.model].filter(Boolean).join(" ");
+    expect(detectDamageSignals(blob).blocked).toBe(true);
+  });
+
+  it("damage gate: 'sem sinistro' negation is not blocked", () => {
+    const clean = JSON.stringify([
+      {
+        id: "101",
+        marca: "Honda",
+        modelo: "Civic",
+        versao: "EXL 2.0",
+        descricao: "sem sinistro, carro muito conservado",
+        ano: 2020,
+        km: 40000,
+        preco: 88000,
+        fipe: 100000,
+        status: "disponivel",
+      },
+    ]);
+    const items = parseCompracertaItems(clean);
+    expect(items).toHaveLength(1);
+    const item = items[0]!;
+    const blob = [item.descricao, item.versao, item.model].filter(Boolean).join(" ");
+    expect(detectDamageSignals(blob).blocked).toBe(false);
   });
 });

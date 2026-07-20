@@ -20,6 +20,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { detectDamageSignals } from "../../src/lib/filters/damageSignals";
 import { assertAllowedUrl, isCliEntry } from "./fetch-guards";
 import {
   bumpSkip,
@@ -95,13 +96,27 @@ async function harvestHtmlSite(
     }
 
     const cards = parseClubeRepasseCards(html);
-    // If a page returns 0 cards we may have passed the last real page
+    // If page 1 returns 0 cards the site is down or has no inventory — stop
+    // immediately rather than crawling all 183+ pages in vain.
+    if (cards.length === 0 && page === 1) {
+      console.warn(`[storefront] ${site.id}: page 1 returned 0 cards — site may be down; aborting.`);
+      break;
+    }
+    // Past page 1: 0 cards means we've passed the last real page.
     if (cards.length === 0 && page > 1) {
       break;
     }
 
     for (const card of cards) {
       summary.scanned++;
+
+      // Damage gate — skip sinistro/batido/salvage cars at harvest time,
+      // consistent with napista-parse.ts:81 and webmotors-parse.ts:185.
+      const damageBlob = [card.brand, card.model, card.description].filter(Boolean).join(" ");
+      if (detectDamageSignals(damageBlob).blocked) {
+        bumpSkip(summary, "damaged");
+        continue;
+      }
 
       if (hasReachedCeiling(summary, ceiling)) {
         bumpSkip(summary, "ceiling");
@@ -167,6 +182,15 @@ async function harvestJsonSite(
   for (const item of items) {
     summary.scanned++;
 
+    // Damage gate — skip sinistro/batido/salvage cars at harvest time,
+    // consistent with napista-parse.ts:81 and webmotors-parse.ts:185.
+    // Gate on descricao + versao + modelo (all available text fields).
+    const damageBlob = [item.descricao, item.versao, item.model].filter(Boolean).join(" ");
+    if (detectDamageSignals(damageBlob).blocked) {
+      bumpSkip(summary, "damaged");
+      continue;
+    }
+
     if (hasReachedCeiling(summary, ceiling)) {
       bumpSkip(summary, "ceiling");
       continue;
@@ -184,7 +208,10 @@ async function harvestJsonSite(
       confidence: "medium",
       bodyType,
       mileageKm: item.mileageKm,
-      sourceUrl: `${site.baseUrl}/?veiculo=${item.id}`,
+      // Deep-link pattern confirmed 2026-07-20: /veiculo/<marca>-<modelo>-<ano>-<id>
+      // (slug-case, lowercase, spaces replaced by hyphens). The JSON has no
+      // explicit url field; this slug is constructed from available fields.
+      sourceUrl: `${site.baseUrl}/veiculo/${item.brand.toLowerCase().replace(/\s+/g, "-")}-${item.model.toLowerCase().replace(/\s+/g, "-")}-${item.year}-${item.id}`,
       sourcePlatform: site.sourcePlatform,
       city: site.city,
       state: site.state,

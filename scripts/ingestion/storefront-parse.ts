@@ -130,11 +130,11 @@ function parseBrlStorefront(raw: string): number | null {
   const n = parseFloat(normalized);
   if (Number.isFinite(n) && n > 0) return Math.round(n);
 
-  // Fallback: just grab digits
-  const digits = cleaned.replace(/\D/g, "");
-  if (!digits) return null;
-  const fromDigits = Number(digits) / 100;
-  return Number.isFinite(fromDigits) && fromDigits > 0 ? Math.round(fromDigits) : null;
+  // The primary path covers all real Brazilian price formats (with or without
+  // comma decimal separator, with spaces or dots as thousands separators).
+  // A digit-strip fallback would double-divide by 100 for comma-less integers
+  // (e.g. "40500" → strip → "40500" / 100 = 405, wrong). Removed.
+  return null;
 }
 
 /** Known brands ordered longest-first to avoid "Ford" shadowing "Ford EcoSport" etc. */
@@ -387,6 +387,10 @@ export interface CompracertaItem {
   id: string;
   brand: string;
   model: string;
+  /** Vehicle version/trim string (e.g. "STD 4X4 DIESEL MANUAL") — used for damage gating. */
+  versao: string;
+  /** Free-text description field from the API (e.g. "CAMINHONETE") — used for damage gating. */
+  descricao: string;
   year: number;
   mileageKm: number;
   askingPriceBRL: number;
@@ -399,6 +403,8 @@ interface RawCompracertaVehicle {
   id?: unknown;
   marca?: unknown;
   modelo?: unknown;
+  versao?: unknown;
+  descricao?: unknown;
   ano?: unknown;
   km?: unknown;
   fipe?: unknown;
@@ -443,10 +449,15 @@ export function parseCompracertaItems(raw: string): CompracertaItem[] {
     const belowFipePct =
       fipeBRL !== undefined ? (1 - preco / fipeBRL) * 100 : undefined;
 
+    const descricao = typeof entry.descricao === "string" ? entry.descricao : "";
+    const versao = typeof entry.versao === "string" ? entry.versao : "";
+
     items.push({
       id,
       brand,
       model,
+      versao,
+      descricao,
       year,
       mileageKm: km,
       askingPriceBRL: preco,

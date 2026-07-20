@@ -16,7 +16,7 @@ import {
   formatInstallmentPlan,
   formatRepasseBRL,
 } from "@/lib/repasse-display";
-import { RISK_CHECK_LABEL, SOURCE_CHANNEL_LABEL } from "@/lib/types";
+import { CONFIDENCE_LABEL, RISK_CHECK_LABEL, SOURCE_CHANNEL_LABEL } from "@/lib/types";
 import type { CarBundle } from "@/lib/aggregate";
 import { syncFipeValue, type FipeSyncResult } from "@/lib/actions/fipe-sync";
 import { CheckCircle2, ExternalLink, RefreshCw, XCircle } from "lucide-react";
@@ -77,16 +77,16 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
               />
             )}
             {car.confidence && (
-              <div>
-                <span className="text-xs font-medium text-text-muted">Lead confidence</span>
-                <div className="mt-0.5">
-                  {car.confidence === "high" ? (
-                    <span className="text-sm text-text-primary">Alta</span>
+              <Field
+                label="Lead confidence"
+                value={
+                  car.confidence === "high" ? (
+                    CONFIDENCE_LABEL["high"]
                   ) : (
                     <ConfidenceBadge confidence={car.confidence} />
-                  )}
-                </div>
-              </div>
+                  )
+                }
+              />
             )}
             <div className="sm:col-span-2 lg:col-span-3">
               <span className="text-xs font-medium text-text-muted">Sources</span>

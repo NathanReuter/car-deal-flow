@@ -25,6 +25,29 @@ describe("sourcesDueOn", () => {
     expect(sourcesDueOn(new Date(2026, 6, 15))).not.toContain("bradesco"); // Wed
   });
 
+  it("runs napista every day", () => {
+    for (let day = 13; day <= 19; day++) {
+      // 2026-07-13 is a Monday
+      expect(sourcesDueOn(new Date(2026, 6, day))).toContain("napista");
+    }
+  });
+
+  it("runs webmotors on Mon/Wed/Fri only", () => {
+    expect(sourcesDueOn(new Date(2026, 6, 13))).toContain("webmotors"); // Mon
+    expect(sourcesDueOn(new Date(2026, 6, 15))).toContain("webmotors"); // Wed
+    expect(sourcesDueOn(new Date(2026, 6, 17))).toContain("webmotors"); // Fri
+    expect(sourcesDueOn(new Date(2026, 6, 14))).not.toContain("webmotors"); // Tue
+    expect(sourcesDueOn(new Date(2026, 6, 18))).not.toContain("webmotors"); // Sat
+  });
+
+  it("runs storefronts on Tue/Fri only", () => {
+    expect(sourcesDueOn(new Date(2026, 6, 14))).toContain("storefronts"); // Tue
+    expect(sourcesDueOn(new Date(2026, 6, 17))).toContain("storefronts"); // Fri
+    expect(sourcesDueOn(new Date(2026, 6, 13))).not.toContain("storefronts"); // Mon
+    expect(sourcesDueOn(new Date(2026, 6, 15))).not.toContain("storefronts"); // Wed
+    expect(sourcesDueOn(new Date(2026, 6, 18))).not.toContain("storefronts"); // Sat
+  });
+
   it("never schedules paused sources", () => {
     for (let day = 13; day <= 19; day++) {
       const due = sourcesDueOn(new Date(2026, 6, day)) as string[];

@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../../src/generated/prisma/client";
+import { requireDatabaseUrl } from "../lib/database-url";
 import { isSpecialDeal, totalCostBRL, type DealCar } from "./lib/deal-economics";
 
 export interface AlertDeal {
@@ -46,7 +47,7 @@ function notifyMac(report: AlertReport): void {
 
 async function main() {
   const notify = !process.argv.includes("--no-notify");
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
+  const adapter = new PrismaBetterSqlite3({ url: requireDatabaseUrl() });
   const prisma = new PrismaClient({ adapter });
   try {
     const cars = await prisma.car.findMany({

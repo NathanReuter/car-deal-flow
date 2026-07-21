@@ -6,6 +6,10 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      # next build imports src/lib/db.ts while collecting page data; fail-loud
+      # without a URL. Scripts and local next load this from .env instead.
+      DATABASE_URL: "file:./dev.db"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

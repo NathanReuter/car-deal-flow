@@ -15,6 +15,10 @@ import type {
   RiskCheckItem,
   ConditionField,
   RepasseUrgency,
+  DealPhase,
+  SourceChannel,
+  LeadConfidence,
+  Verdict,
 } from "@/lib/types";
 import type {
   Car as DbCar,
@@ -23,6 +27,7 @@ import type {
   ConditionReview as DbConditionReview,
   BuyingGoal as DbBuyingGoal,
   CarSource as DbCarSource,
+  Prisma,
 } from "@/generated/prisma/client";
 import { displaySources } from "@/lib/sources";
 
@@ -35,14 +40,14 @@ export interface CarBundle {
   condition: ConditionReview;
 }
 
-type DbCarWithRelations = DbCar & {
+export type DbCarWithRelations = DbCar & {
   attachments: DbAttachment[];
   riskCheck: DbRiskCheck | null;
   conditionReview: DbConditionReview | null;
   sources: DbCarSource[];
 };
 
-const CAR_INCLUDE = {
+export const CAR_INCLUDE = {
   attachments: true,
   riskCheck: true,
   conditionReview: true,
@@ -113,7 +118,7 @@ function toCar(row: DbCarWithRelations): Car {
   };
 }
 
-function toRiskCheck(row: DbRiskCheck): RiskCheck {
+export function toRiskCheck(row: DbRiskCheck): RiskCheck {
   const items = JSON.parse(row.items) as RiskCheckItem[];
   return {
     carId: row.carId,
@@ -130,7 +135,7 @@ function toRiskCheck(row: DbRiskCheck): RiskCheck {
   };
 }
 
-function toConditionReview(row: DbConditionReview): ConditionReview {
+export function toConditionReview(row: DbConditionReview): ConditionReview {
   const fields = JSON.parse(row.fields) as ConditionField[];
   return {
     carId: row.carId,
@@ -140,7 +145,7 @@ function toConditionReview(row: DbConditionReview): ConditionReview {
   };
 }
 
-function toBuyingGoal(row: DbBuyingGoal): BuyingGoal {
+export function toBuyingGoal(row: DbBuyingGoal): BuyingGoal {
   return {
     id: row.id,
     name: row.name,
@@ -165,7 +170,7 @@ export async function getActiveGoal(): Promise<BuyingGoal> {
   return toBuyingGoal(row);
 }
 
-function buildBundle(row: DbCarWithRelations, goal: BuyingGoal): CarBundle {
+export function buildBundle(row: DbCarWithRelations, goal: BuyingGoal): CarBundle {
   const car = toCar(row);
   const risk = row.riskCheck ? toRiskCheck(row.riskCheck) : { carId: car.id, items: [], caixaReview: {
     applicable: false, editalReviewed: false, hiddenTransferCostsBRL: 0, resaleStigmaNote: "", historyClarity: "clear" as const, legalTransferRiskNote: "",
@@ -200,4 +205,184 @@ export async function getBundle(carId: string): Promise<CarBundle | undefined> {
   ]);
   if (!row) return undefined;
   return buildBundle(row, goal);
+}
+
+// ---------------------------------------------------------------------------
+// getBundlesPage — server-side filter / sort / paginate (FW-2 Slice 2)
+
+export interface BundlesPageParams {
+  page?: number;         // 1-based, default 1
+  pageSize?: number;     // default 50
+  q?: string;            // text search: brand / model / trim / city
+  brand?: string;
+  stage?: string;        // pipelineStage
+  phase?: DealPhase;
+  sourceChannel?: SourceChannel;
+  confidence?: LeadConfidence;
+  state?: string;
+  verdict?: Verdict;
+  priceMin?: number;
+  priceMax?: number;
+  belowFipePctMin?: number; // only rows where askingPrice <= fipeValue * (1 - pct/100)
+  sort?: "score" | "price" | "year" | "mileage" | "recent";
+}
+
+export interface BundlesPage {
+  rows: CarBundle[];
+  total: number;
+  page: number;
+  pageSize: number;
+  facets: {
+    phase: Record<string, number>;
+    sourceChannel: Record<string, number>;
+    verdict: Record<string, number>;
+    confidence: Record<string, number>;
+  };
+}
+
+export async function getBundlesPage(
+  params: BundlesPageParams,
+  db: typeof prisma = prisma,
+): Promise<BundlesPage> {
+  const MAX_PAGE_SIZE = 200;
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, params.pageSize ?? 50));
+  const page = Math.min(100_000, Math.max(1, params.page ?? 1));
+  const skip = (page - 1) * pageSize;
+
+  // Build the Prisma where clause
+  const where: Prisma.CarWhereInput = {};
+
+  // Default: hide expired unless stage is explicitly chosen
+  if (!params.stage) {
+    where.pipelineStage = { not: "expired" };
+  } else {
+    where.pipelineStage = params.stage;
+  }
+
+  if (params.brand !== undefined) where.brand = { contains: params.brand };
+  if (params.phase !== undefined) where.dealPhase = params.phase;
+  if (params.sourceChannel !== undefined) where.sourceChannel = params.sourceChannel;
+  if (params.confidence !== undefined) where.confidence = params.confidence;
+  if (params.state !== undefined) where.state = params.state;
+  if (params.verdict !== undefined) where.verdict = params.verdict;
+
+  if (params.priceMin !== undefined || params.priceMax !== undefined) {
+    where.askingPriceBRL = {};
+    if (params.priceMin !== undefined) where.askingPriceBRL.gte = params.priceMin;
+    if (params.priceMax !== undefined) where.askingPriceBRL.lte = params.priceMax;
+  }
+
+  if (params.q) {
+    const q = params.q;
+    where.OR = [
+      { brand: { contains: q } },
+      { model: { contains: q } },
+      { trim: { contains: q } },
+      { city: { contains: q } },
+    ];
+  }
+
+  // belowFipePctMin: raw SQL to find IDs satisfying the cross-column constraint.
+  // SQLite does not support computed WHERE via Prisma, so we collect eligible IDs
+  // with $queryRaw and add them as an id-in filter.
+  if (params.belowFipePctMin !== undefined) {
+    const threshold = params.belowFipePctMin;
+    // Apply the same stage constraint as the main where clause so the raw
+    // query scans only the relevant subset of rows (not the entire table).
+    let rows: { id: string }[];
+    if (params.stage) {
+      const stage = params.stage;
+      rows = await db.$queryRaw<{ id: string }[]>`
+        SELECT id FROM Car
+        WHERE fipeValueBRL IS NOT NULL
+          AND fipeValueBRL > 0
+          AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
+          AND pipelineStage = ${stage}
+      `;
+    } else {
+      rows = await db.$queryRaw<{ id: string }[]>`
+        SELECT id FROM Car
+        WHERE fipeValueBRL IS NOT NULL
+          AND fipeValueBRL > 0
+          AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
+          AND pipelineStage != 'expired'
+      `;
+    }
+    const eligibleIds = rows.map((r) => r.id);
+    // Intersect with any existing id filter (none in base path)
+    where.id = { in: eligibleIds };
+  }
+
+  // Sort order
+  const orderBy: Prisma.CarOrderByWithRelationInput[] = [];
+  switch (params.sort) {
+    case "score":
+      orderBy.push({ finalScore: "desc" });
+      break;
+    case "price":
+      orderBy.push({ askingPriceBRL: "asc" });
+      break;
+    case "year":
+      orderBy.push({ year: "desc" });
+      break;
+    case "mileage":
+      // nulls: "last" pushes rows with no odometer data to the bottom (Prisma 7+ / SQLite).
+      orderBy.push({ mileageKm: { sort: "asc", nulls: "last" } });
+      break;
+    case "recent":
+    default:
+      orderBy.push({ createdAt: "desc" });
+      break;
+  }
+  // Stable secondary sort
+  orderBy.push({ id: "asc" });
+
+  // Run queries in parallel: page rows, total count, facets, active goal.
+  // Goal is loaded via `db` so tests can inject a test client with seeded data.
+  const [pageRows, total, phaseGroups, channelGroups, verdictGroups, confidenceGroups, goalRow] =
+    await Promise.all([
+      db.car.findMany({
+        where,
+        include: CAR_INCLUDE,
+        orderBy,
+        skip,
+        take: pageSize,
+      }),
+      db.car.count({ where }),
+      db.car.groupBy({ by: ["dealPhase"], where, _count: true }),
+      db.car.groupBy({ by: ["sourceChannel"], where, _count: true }),
+      db.car.groupBy({ by: ["verdict"], where, _count: true }),
+      db.car.groupBy({ by: ["confidence"], where, _count: true }),
+      db.buyingGoal.findFirst({ where: { active: true } }),
+    ]);
+
+  if (!goalRow) throw new Error("No active buying goal configured.");
+  const goal = toBuyingGoal(goalRow);
+
+  const toRecord = (
+    groups: { _count: number; [key: string]: unknown }[],
+    key: string,
+  ): Record<string, number> => {
+    const rec: Record<string, number> = {};
+    for (const g of groups) {
+      const val = g[key];
+      if (val !== null && val !== undefined) {
+        rec[String(val)] = g._count;
+      }
+    }
+    return rec;
+  };
+
+  return {
+    rows: pageRows.map((row) => buildBundle(row, goal)),
+    total,
+    page,
+    pageSize,
+    facets: {
+      phase: toRecord(phaseGroups, "dealPhase"),
+      sourceChannel: toRecord(channelGroups, "sourceChannel"),
+      verdict: toRecord(verdictGroups, "verdict"),
+      confidence: toRecord(confidenceGroups, "confidence"),
+    },
+  };
 }

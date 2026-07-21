@@ -61,10 +61,30 @@ model Car {
   // Why the car is in its current stage (goal-filter notes, etc.).
   stageReason           String?
 
+  // Denormalized cache of computeDecision under the active BuyingGoal.
+  // Refreshed by apply-goal-filter (post-harvest) and rescore-decisions.ts (backfill / goal-change).
+  // Null = not yet scored.
+  finalScore Int?
+  verdict    String?
+
   attachments     Attachment[]
   sources         CarSource[]
   riskCheck       RiskCheck?
   conditionReview ConditionReview?
+
+  // Indexes for getBundlesPage — every page load filters on pipelineStage.
+  // Lead with pipelineStage in all compounds so SQLite can use a single scan.
+  @@index([pipelineStage])
+  @@index([pipelineStage, dealPhase])
+  @@index([pipelineStage, sourceChannel])
+  @@index([pipelineStage, confidence])
+  @@index([pipelineStage, verdict])
+  @@index([pipelineStage, state])
+  @@index([pipelineStage, askingPriceBRL])
+  @@index([pipelineStage, finalScore])
+  @@index([pipelineStage, createdAt])
+  @@index([brand])
+  @@index([fipeValueBRL, askingPriceBRL])
 }
 
 // Additional harvest origins for a car. Car.sourceUrl/sourcePlatform stay

@@ -1,14 +1,11 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaClient } from "../../src/generated/prisma/client";
+import { PrismaClient, Prisma } from "../../src/generated/prisma/client";
 import { requireDatabaseUrl } from "../lib/database-url";
-import { computeGoalFit } from "../../src/lib/scoring/goalFit";
-import type {
-  BodyType,
-  BuyingGoal,
-  Car,
-  PipelineStage,
-  SellerType,
-} from "../../src/lib/types";
+import {
+  toBuyingGoal,
+  buildBundle,
+  CAR_INCLUDE,
+} from "../../src/lib/aggregate";
 
 export class ApplyGoalFilterError extends Error {}
 
@@ -23,103 +20,6 @@ export interface ApplyGoalFilterSummary {
   rejected: number;
 }
 
-function toCar(row: {
-  id: string;
-  brand: string;
-  model: string;
-  trim: string;
-  year: number;
-  modelYear: number;
-  mileageKm: number | null;
-  askingPriceBRL: number;
-  city: string;
-  state: string;
-  sellerType: string;
-  fuel: string;
-  transmission: string;
-  bodyType: string;
-  color: string;
-  sourceUrl: string;
-  sourcePlatform: string;
-  notes: string;
-  plate: string | null;
-  chassis: string | null;
-  photos: string;
-  pipelineStage: string;
-  createdAt: Date;
-  updatedAt: Date;
-  manualVerdictOverride: string | null;
-  overrideReason: string | null;
-  stageReason: string | null;
-  fipeValueBRL: number | null;
-}): Car {
-  return {
-    id: row.id,
-    brand: row.brand,
-    model: row.model,
-    trim: row.trim,
-    year: row.year,
-    modelYear: row.modelYear,
-    mileageKm: row.mileageKm,
-    askingPriceBRL: row.askingPriceBRL,
-    city: row.city,
-    state: row.state,
-    sellerType: row.sellerType as SellerType,
-    fuel: row.fuel as Car["fuel"],
-    transmission: row.transmission as Car["transmission"],
-    bodyType: row.bodyType as BodyType,
-    color: row.color,
-    sourceUrl: row.sourceUrl,
-    sourcePlatform: row.sourcePlatform,
-    notes: row.notes,
-    plate: row.plate ?? undefined,
-    chassis: row.chassis ?? undefined,
-    attachments: [],
-    photos: JSON.parse(row.photos) as string[],
-    pipelineStage: row.pipelineStage as PipelineStage,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    manualVerdictOverride: (row.manualVerdictOverride as Car["manualVerdictOverride"]) ?? undefined,
-    overrideReason: row.overrideReason ?? undefined,
-    stageReason: row.stageReason ?? undefined,
-    fipeValueBRL: row.fipeValueBRL,
-  };
-}
-
-function toGoal(row: {
-  id: string;
-  name: string;
-  active: boolean;
-  budgetMinBRL: number;
-  budgetMaxBRL: number;
-  minYear: number;
-  maxMileageKm: number;
-  requiredFeatures: string;
-  preferredBodyTypes: string;
-  preferredBrands: string;
-  excludedBrandsModels: string;
-  fuelEconomyThresholdKmL: number;
-  minResaleLiquidityScore: number;
-  familySpaceRequired: boolean;
-}): BuyingGoal {
-  return {
-    id: row.id,
-    name: row.name,
-    active: row.active,
-    budgetMinBRL: row.budgetMinBRL,
-    budgetMaxBRL: row.budgetMaxBRL,
-    minYear: row.minYear,
-    maxMileageKm: row.maxMileageKm,
-    requiredFeatures: JSON.parse(row.requiredFeatures) as string[],
-    preferredBodyTypes: JSON.parse(row.preferredBodyTypes) as BodyType[],
-    preferredBrands: JSON.parse(row.preferredBrands) as string[],
-    excludedBrandsModels: JSON.parse(row.excludedBrandsModels) as string[],
-    fuelEconomyThresholdKmL: row.fuelEconomyThresholdKmL,
-    minResaleLiquidityScore: row.minResaleLiquidityScore,
-    familySpaceRequired: row.familySpaceRequired,
-  };
-}
-
 export async function applyGoalFilter(
   prisma: PrismaClient,
   options: ApplyGoalFilterOptions = {},
@@ -130,10 +30,11 @@ export async function applyGoalFilter(
   if (!goalRow) {
     throw new ApplyGoalFilterError("No active buying goal configured.");
   }
-  const goal = toGoal(goalRow);
+  const goal = toBuyingGoal(goalRow);
 
   const cars = await prisma.car.findMany({
     where: { pipelineStage: { in: ["new_lead", "parked"] } },
+    include: CAR_INCLUDE,
   });
 
   const summary: ApplyGoalFilterSummary = {
@@ -143,41 +44,62 @@ export async function applyGoalFilter(
     rejected: 0,
   };
 
-  for (const row of cars) {
-    const match = computeGoalFit(toCar(row), goal);
+  // Build each per-car update upfront, accumulate counts, then run all inside
+  // a single transaction so SQLite only fsyncs once.
+  const updates: Prisma.PrismaPromise<unknown>[] = [];
 
-    if (match.score === 0) {
-      await prisma.car.update({
-        where: { id: row.id },
-        data: {
-          pipelineStage: "rejected",
-          stageReason: match.failedCriteria.join("; ") || match.explanation,
-        },
-      });
+  for (const row of cars) {
+    const bundle = buildBundle(row, goal);
+    const { goalMatch, decision } = bundle;
+
+    if (goalMatch.score === 0) {
+      updates.push(
+        prisma.car.update({
+          where: { id: row.id },
+          data: {
+            pipelineStage: "rejected",
+            stageReason: goalMatch.failedCriteria.join("; ") || goalMatch.explanation,
+            finalScore: decision.finalScore,
+            verdict: decision.verdict,
+          },
+        }),
+      );
       summary.rejected += 1;
       continue;
     }
 
-    if (match.score < minGoalFit) {
-      await prisma.car.update({
-        where: { id: row.id },
-        data: {
-          pipelineStage: "parked",
-          stageReason: match.failedCriteria.join("; "),
-        },
-      });
+    if (goalMatch.score < minGoalFit) {
+      updates.push(
+        prisma.car.update({
+          where: { id: row.id },
+          data: {
+            pipelineStage: "parked",
+            stageReason: goalMatch.failedCriteria.join("; "),
+            finalScore: decision.finalScore,
+            verdict: decision.verdict,
+          },
+        }),
+      );
       summary.parked += 1;
       continue;
     }
 
-    await prisma.car.update({
-      where: { id: row.id },
-      data: {
-        pipelineStage: "new_lead",
-        stageReason: null,
-      },
-    });
+    updates.push(
+      prisma.car.update({
+        where: { id: row.id },
+        data: {
+          pipelineStage: "new_lead",
+          stageReason: null,
+          finalScore: decision.finalScore,
+          verdict: decision.verdict,
+        },
+      }),
+    );
     summary.keptNewLead += 1;
+  }
+
+  if (updates.length > 0) {
+    await prisma.$transaction(updates);
   }
 
   return summary;

@@ -94,6 +94,27 @@ describe("applyGoalFilter", () => {
     expect(car!.stageReason).toMatch(/excluded/i);
   });
 
+  it("hard-rejects a discontinued/orphaned-brand model regardless of other fit", async () => {
+    await seedGoal(ctx.prisma, { preferredBrands: [] });
+    const lead = await writeLead(ctx.prisma, {
+      brand: "Mitsubishi",
+      model: "Pajero Sport",
+      year: 2023,
+      askingPriceBRL: 95000,
+      sourceUrl: "https://example.com/pajero-sport",
+      sourcePlatform: "VIP Leilões",
+      sellerType: "auction",
+      bodyType: "suv",
+      mileageKm: 30000,
+    });
+
+    const summary = await applyGoalFilter(ctx.prisma);
+    expect(summary.rejected).toBe(1);
+    const car = await ctx.prisma.car.findUnique({ where: { id: lead.carId } });
+    expect(car!.pipelineStage).toBe("rejected");
+    expect(car!.stageReason).toMatch(/no confirmed successor/i);
+  });
+
   it("parks cars below the goal-fit threshold", async () => {
     await seedGoal(ctx.prisma, {
       budgetMaxBRL: 60000,

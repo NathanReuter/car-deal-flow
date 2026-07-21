@@ -76,6 +76,34 @@ describe("computeGoalFit body type gate", () => {
   });
 });
 
+describe("computeGoalFit discontinued-risk gate", () => {
+  it("hard-rejects a brand with paralyzed/exited Brazil operations", () => {
+    const match = computeGoalFit(
+      baseCar({ brand: "Subaru", model: "Forester", bodyType: "suv" as BodyType }),
+      { ...baseGoal(), preferredBrands: [] },
+    );
+    expect(match.score).toBe(0);
+    expect(match.failedCriteria.join(" ")).toMatch(/ended commercial operations/i);
+  });
+
+  it("hard-rejects a discontinued model with no successor", () => {
+    const match = computeGoalFit(
+      baseCar({ brand: "Mitsubishi", model: "Pajero Sport", bodyType: "suv" as BodyType }),
+      { ...baseGoal(), preferredBrands: [] },
+    );
+    expect(match.score).toBe(0);
+    expect(match.failedCriteria.join(" ")).toMatch(/no confirmed successor/i);
+  });
+
+  it("does not gate an unrelated model from the same brand", () => {
+    const match = computeGoalFit(
+      baseCar({ brand: "Mitsubishi", model: "Outlander", bodyType: "suv" as BodyType }),
+      { ...baseGoal(), preferredBrands: [] },
+    );
+    expect(match.score).toBeGreaterThan(0);
+  });
+});
+
 describe("computeGoalFit damage gate", () => {
   it("hard-rejects cars with collision / monta in notes", () => {
     const match = computeGoalFit(baseCar({ notes: MAPFRE_NOTES }), baseGoal());

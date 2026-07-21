@@ -53,7 +53,7 @@ export interface WmListResult {
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
-function buildApiUrl(keyword: string, page: number): string {
+export function buildApiUrl(keyword: string, page: number): string {
   const params = new URLSearchParams({
     tipovendedor: "PF",
     tipoveiculo: "carros",
@@ -69,25 +69,105 @@ interface WmApiResponse {
   SearchResults?: WebmotorsSearchResult[];
 }
 
-async function fetchApiPage(
+// ─── PerimeterX block detection ───────────────────────────────────────────────
+
+/** Thrown when the internal JSON API returns an anti-bot block instead of
+ * results. Callers treat this as fatal (fail-closed) rather than end-of-results. */
+export class WebmotorsBlockError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "WebmotorsBlockError";
+  }
+}
+
+/** Body substrings that mark a PerimeterX / anti-bot wall (served as HTTP 200
+ * HTML). Case-insensitive. */
+export const WM_BLOCK_MARKERS: RegExp[] = [
+  /access to this page has been denied/i,
+  /px-captcha/i,
+  /_pxhd/i,
+  /perimeterx/i,
+];
+
+const WM_HTML_PREFIX = /^\s*<(?:!doctype|html)\b/i;
+
+/** Outcome of a raw API response, classified in Node (the fetch itself runs in
+ * the browser context and only returns raw materials). */
+export type WmApiOutcome =
+  | { kind: "ok"; results: WebmotorsSearchResult[] }
+  | { kind: "empty" }
+  | { kind: "blocked"; reason: string };
+
+/**
+ * Pure classifier: distinguishes a genuine empty page from an anti-bot block.
+ *
+ * - `!ok` (403/429/5xx)                 → blocked
+ * - HTML content-type or anti-bot body  → blocked
+ * - unparseable / non-object JSON       → blocked
+ * - object with non-empty SearchResults → ok
+ * - object with empty/missing results   → empty (genuine end-of-results)
+ */
+export function classifyWmApiResponse(raw: {
+  ok: boolean;
+  status: number;
+  contentType: string;
+  body: string;
+}): WmApiOutcome {
+  if (!raw.ok) return { kind: "blocked", reason: `HTTP ${raw.status}` };
+
+  if (/html/i.test(raw.contentType) || WM_HTML_PREFIX.test(raw.body)) {
+    return { kind: "blocked", reason: "anti-bot HTML page" };
+  }
+  if (WM_BLOCK_MARKERS.some((re) => re.test(raw.body))) {
+    return { kind: "blocked", reason: "anti-bot marker in response body" };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.body);
+  } catch {
+    return { kind: "blocked", reason: "non-JSON response body" };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { kind: "blocked", reason: "unexpected response shape" };
+  }
+
+  const results = (parsed as WmApiResponse).SearchResults;
+  if (Array.isArray(results) && results.length > 0) return { kind: "ok", results };
+  return { kind: "empty" };
+}
+
+/**
+ * Fetch one API page inside the warmed-up browser context. Returns the raw
+ * results array, or throws {@link WebmotorsBlockError} if the response is an
+ * anti-bot block (so callers can fail closed instead of mistaking it for
+ * end-of-results). A genuine empty page returns `[]`.
+ */
+export async function fetchApiPage(
   page: Page,
   keyword: string,
   pageNo: number,
 ): Promise<WebmotorsSearchResult[]> {
   const url = buildApiUrl(keyword, pageNo);
 
-  const results = await page.evaluate(async (apiUrl: string) => {
+  const raw = await page.evaluate(async (apiUrl: string) => {
     const resp = await fetch(apiUrl, {
-      headers: { "Accept": "application/json" },
+      headers: { Accept: "application/json" },
       credentials: "include",
     });
-    if (!resp.ok) return null;
-    return resp.json() as Promise<unknown>;
+    return {
+      ok: resp.ok,
+      status: resp.status,
+      contentType: resp.headers.get("content-type") ?? "",
+      body: await resp.text(),
+    };
   }, url);
 
-  if (!results || typeof results !== "object") return [];
-  const body = results as WmApiResponse;
-  return body.SearchResults ?? [];
+  const outcome = classifyWmApiResponse(raw);
+  if (outcome.kind === "blocked") {
+    throw new WebmotorsBlockError(`${outcome.reason} for ${url}`);
+  }
+  return outcome.kind === "ok" ? outcome.results : [];
 }
 
 function resultToCard(r: WebmotorsSearchResult): WmListCard {
@@ -126,6 +206,10 @@ export async function listWebmotorsAds(options: {
 
   for (const keyword of queries) {
     for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+      // fetchApiPage throws WebmotorsBlockError on an anti-bot block. We let it
+      // propagate to the CLI (which exits non-zero) on purpose: fail closed
+      // rather than swallow a block and emit a truncated list (issue #8). Do
+      // NOT wrap this in a try/catch that returns partial results.
       const results = await fetchApiPage(options.page, keyword, pageNo);
       if (results.length === 0) break;
 

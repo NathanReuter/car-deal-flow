@@ -29,6 +29,15 @@ Platform: `Webmotors`, `sellerType: repasse`, `dealPhase: pre_repossession`.
   financing-transfer phrase. Dealer stock cannot pass all three layers.
 - Stealth may degrade over time as Webmotors tightens bot detection. Upgrade
   path: switch the stealth plugin to **Camoufox** if detection rates increase.
+- Fail-closed anti-bot handling (issue #8): the internal JSON API is
+  classified per page. A PerimeterX block — non-OK HTTP (403/429), an HTTP-200
+  anti-bot HTML wall (*"Access to this page has been denied"* / `px-captcha`),
+  or a non-JSON body — is recorded as `skipped.blocked` + an `errors[]` entry
+  and **aborts the run** (non-zero exit via the orchestrator), rather than
+  being mistaken for end-of-results. A completed default run that scanned zero
+  raw results also aborts as a probable warm-up block; a suspiciously low yield
+  is flagged `skipped.low_yield`. A genuinely empty page still ends pagination
+  normally. (Resolves PR #7 review finding #2.)
 
 ## Cadence
 

@@ -54,6 +54,28 @@ function baseCar(overrides: Partial<Car> = {}): Car {
   };
 }
 
+describe("computeGoalFit body type gate", () => {
+  it("hard-rejects a car whose body type is outside preferredBodyTypes", () => {
+    const match = computeGoalFit(baseCar({ bodyType: "hatch" as BodyType }), baseGoal());
+    expect(match.score).toBe(0);
+    expect(match.failedCriteria.join(" ")).toMatch(/hatch/i);
+    expect(match.failedCriteria.join(" ")).toMatch(/preferred body type/i);
+  });
+
+  it("does not gate when preferredBodyTypes is empty (no preference set)", () => {
+    const match = computeGoalFit(
+      baseCar({ bodyType: "hatch" as BodyType }),
+      { ...baseGoal(), preferredBodyTypes: [] },
+    );
+    expect(match.score).toBeGreaterThan(0);
+  });
+
+  it("passes a car whose body type matches preferredBodyTypes", () => {
+    const match = computeGoalFit(baseCar({ bodyType: "suv" as BodyType }), baseGoal());
+    expect(match.score).toBeGreaterThan(0);
+  });
+});
+
 describe("computeGoalFit damage gate", () => {
   it("hard-rejects cars with collision / monta in notes", () => {
     const match = computeGoalFit(baseCar({ notes: MAPFRE_NOTES }), baseGoal());

@@ -44,6 +44,26 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
     };
   }
 
+  // A body type outside the goal's preferred list is a segment mismatch (e.g. an
+  // entry hatch when the goal wants compact SUVs), not a partial-credit gap — it
+  // hard-rejects like the excluded-model and damage gates above.
+  if (
+    goal.preferredBodyTypes.length > 0 &&
+    !goal.preferredBodyTypes.includes(car.bodyType)
+  ) {
+    failed.push(
+      `${car.bodyType} is outside the preferred body types (${goal.preferredBodyTypes.join(", ")})`,
+    );
+    return {
+      carId: car.id,
+      goalId: goal.id,
+      score: 0,
+      matchedCriteria: [],
+      failedCriteria: failed,
+      explanation: `${car.brand} ${car.model} is a ${car.bodyType}, outside the goal's preferred body types (${goal.preferredBodyTypes.join(", ")}).`,
+    };
+  }
+
   const criteria: { label: string; ok: boolean }[] = [
     {
       label: `Budget ${formatRange(goal.budgetMinBRL, goal.budgetMaxBRL)}`,
@@ -54,10 +74,6 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
       label: `Mileage under ${goal.maxMileageKm.toLocaleString("pt-BR")} km`,
       // Undisclosed mileage is a goal-fit gap, not an exemption.
       ok: car.mileageKm !== null && car.mileageKm <= goal.maxMileageKm,
-    },
-    {
-      label: `Preferred body type (${goal.preferredBodyTypes.join(", ")})`,
-      ok: goal.preferredBodyTypes.includes(car.bodyType),
     },
     {
       label: `Preferred brand (${goal.preferredBrands.join(", ")})`,

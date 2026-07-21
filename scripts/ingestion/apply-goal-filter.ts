@@ -1,21 +1,10 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../../src/generated/prisma/client";
-import { computeGoalFit } from "../../src/lib/scoring/goalFit";
-import { computeDecision } from "../../src/lib/scoring/decision";
 import {
-  toRiskCheck,
-  toConditionReview,
   toBuyingGoal,
+  buildBundle,
   CAR_INCLUDE,
-  type DbCarWithRelations,
 } from "../../src/lib/aggregate";
-import type {
-  BodyType,
-  BuyingGoal,
-  Car,
-  PipelineStage,
-  SellerType,
-} from "../../src/lib/types";
 
 export class ApplyGoalFilterError extends Error {}
 
@@ -29,59 +18,6 @@ export interface ApplyGoalFilterSummary {
   parked: number;
   rejected: number;
 }
-
-function toCar(row: DbCarWithRelations): Car {
-  return {
-    id: row.id,
-    brand: row.brand,
-    model: row.model,
-    trim: row.trim,
-    year: row.year,
-    modelYear: row.modelYear,
-    mileageKm: row.mileageKm,
-    askingPriceBRL: row.askingPriceBRL,
-    city: row.city,
-    state: row.state,
-    sellerType: row.sellerType as SellerType,
-    fuel: row.fuel as Car["fuel"],
-    transmission: row.transmission as Car["transmission"],
-    bodyType: row.bodyType as BodyType,
-    color: row.color,
-    sourceUrl: row.sourceUrl,
-    sourcePlatform: row.sourcePlatform,
-    notes: row.notes,
-    plate: row.plate ?? undefined,
-    chassis: row.chassis ?? undefined,
-    attachments: [],
-    photos: JSON.parse(row.photos) as string[],
-    pipelineStage: row.pipelineStage as PipelineStage,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    manualVerdictOverride: (row.manualVerdictOverride as Car["manualVerdictOverride"]) ?? undefined,
-    overrideReason: row.overrideReason ?? undefined,
-    stageReason: row.stageReason ?? undefined,
-    fipeValueBRL: row.fipeValueBRL,
-  };
-}
-
-const EMPTY_RISK = {
-  items: [] as import("../../src/lib/types").RiskCheckItem[],
-  caixaReview: {
-    applicable: false,
-    editalReviewed: false,
-    hiddenTransferCostsBRL: 0,
-    resaleStigmaNote: "",
-    historyClarity: "clear" as const,
-    legalTransferRiskNote: "",
-  },
-  score: 100,
-};
-
-const EMPTY_CONDITION = {
-  fields: [] as import("../../src/lib/types").ConditionField[],
-  mechanicNotes: "Not inspected yet.",
-  score: 50,
-};
 
 export async function applyGoalFilter(
   prisma: PrismaClient,
@@ -108,22 +44,15 @@ export async function applyGoalFilter(
   };
 
   for (const row of cars) {
-    const car = toCar(row);
-    const match = computeGoalFit(car, goal);
-    const risk = row.riskCheck
-      ? toRiskCheck(row.riskCheck)
-      : { carId: car.id, ...EMPTY_RISK };
-    const condition = row.conditionReview
-      ? toConditionReview(row.conditionReview)
-      : { carId: car.id, ...EMPTY_CONDITION };
-    const decision = computeDecision(car, goal, risk, condition);
+    const bundle = buildBundle(row, goal);
+    const { goalMatch, decision } = bundle;
 
-    if (match.score === 0) {
+    if (goalMatch.score === 0) {
       await prisma.car.update({
         where: { id: row.id },
         data: {
           pipelineStage: "rejected",
-          stageReason: match.failedCriteria.join("; ") || match.explanation,
+          stageReason: goalMatch.failedCriteria.join("; ") || goalMatch.explanation,
           finalScore: decision.finalScore,
           verdict: decision.verdict,
         },
@@ -132,12 +61,12 @@ export async function applyGoalFilter(
       continue;
     }
 
-    if (match.score < minGoalFit) {
+    if (goalMatch.score < minGoalFit) {
       await prisma.car.update({
         where: { id: row.id },
         data: {
           pipelineStage: "parked",
-          stageReason: match.failedCriteria.join("; "),
+          stageReason: goalMatch.failedCriteria.join("; "),
           finalScore: decision.finalScore,
           verdict: decision.verdict,
         },

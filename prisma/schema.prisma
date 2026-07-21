@@ -61,6 +61,12 @@ model Car {
   // Why the car is in its current stage (goal-filter notes, etc.).
   stageReason           String?
 
+  // Denormalized cache of computeDecision under the active BuyingGoal.
+  // Refreshed by apply-goal-filter (post-harvest) and rescore-decisions.ts (backfill / goal-change).
+  // Null = not yet scored.
+  finalScore Int?
+  verdict    String?
+
   attachments     Attachment[]
   sources         CarSource[]
   riskCheck       RiskCheck?

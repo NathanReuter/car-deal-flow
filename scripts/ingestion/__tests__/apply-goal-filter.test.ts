@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createTestDb, type TestDbContext } from "../../risk-checks/__tests__/test-db";
 import { writeLead } from "../write-lead";
 import { applyGoalFilter, ApplyGoalFilterError } from "../apply-goal-filter";
+import { buildBundle, CAR_INCLUDE, toBuyingGoal } from "../../../src/lib/aggregate";
 
 async function seedGoal(
   prisma: TestDbContext["prisma"],
@@ -143,6 +144,38 @@ describe("applyGoalFilter", () => {
     const car = await ctx.prisma.car.findUnique({ where: { id: lead.carId } });
     expect(car!.pipelineStage).toBe("new_lead");
     expect(car!.stageReason).toBeNull();
+  });
+
+  it("persists finalScore and verdict matching computeDecision for a processed car", async () => {
+    await seedGoal(ctx.prisma);
+    const goalRow = await ctx.prisma.buyingGoal.findFirstOrThrow({ where: { active: true } });
+    const goal = toBuyingGoal(goalRow);
+    const lead = await writeLead(ctx.prisma, {
+      brand: "Hyundai",
+      model: "Creta",
+      year: 2022,
+      askingPriceBRL: 100000,
+      sourceUrl: "https://example.com/creta-score",
+      sourcePlatform: "Bradesco Vitrine",
+      sellerType: "bank_recovery",
+      bodyType: "suv",
+      mileageKm: 35000,
+      city: "São Paulo",
+      state: "SP",
+    });
+
+    await applyGoalFilter(ctx.prisma);
+
+    const row = await ctx.prisma.car.findUniqueOrThrow({
+      where: { id: lead.carId },
+      include: CAR_INCLUDE,
+    });
+    expect(row.finalScore).not.toBeNull();
+    expect(row.verdict).not.toBeNull();
+
+    const bundle = buildBundle(row, goal);
+    expect(row.finalScore).toBe(bundle.decision.finalScore);
+    expect(row.verdict).toBe(bundle.decision.verdict);
   });
 
   it("does not touch researching cars", async () => {

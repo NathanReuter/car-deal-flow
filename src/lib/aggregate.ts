@@ -35,14 +35,14 @@ export interface CarBundle {
   condition: ConditionReview;
 }
 
-type DbCarWithRelations = DbCar & {
+export type DbCarWithRelations = DbCar & {
   attachments: DbAttachment[];
   riskCheck: DbRiskCheck | null;
   conditionReview: DbConditionReview | null;
   sources: DbCarSource[];
 };
 
-const CAR_INCLUDE = {
+export const CAR_INCLUDE = {
   attachments: true,
   riskCheck: true,
   conditionReview: true,
@@ -113,7 +113,7 @@ function toCar(row: DbCarWithRelations): Car {
   };
 }
 
-function toRiskCheck(row: DbRiskCheck): RiskCheck {
+export function toRiskCheck(row: DbRiskCheck): RiskCheck {
   const items = JSON.parse(row.items) as RiskCheckItem[];
   return {
     carId: row.carId,
@@ -130,7 +130,7 @@ function toRiskCheck(row: DbRiskCheck): RiskCheck {
   };
 }
 
-function toConditionReview(row: DbConditionReview): ConditionReview {
+export function toConditionReview(row: DbConditionReview): ConditionReview {
   const fields = JSON.parse(row.fields) as ConditionField[];
   return {
     carId: row.carId,
@@ -140,7 +140,7 @@ function toConditionReview(row: DbConditionReview): ConditionReview {
   };
 }
 
-function toBuyingGoal(row: DbBuyingGoal): BuyingGoal {
+export function toBuyingGoal(row: DbBuyingGoal): BuyingGoal {
   return {
     id: row.id,
     name: row.name,
@@ -165,7 +165,7 @@ export async function getActiveGoal(): Promise<BuyingGoal> {
   return toBuyingGoal(row);
 }
 
-function buildBundle(row: DbCarWithRelations, goal: BuyingGoal): CarBundle {
+export function buildBundle(row: DbCarWithRelations, goal: BuyingGoal): CarBundle {
   const car = toCar(row);
   const risk = row.riskCheck ? toRiskCheck(row.riskCheck) : { carId: car.id, items: [], caixaReview: {
     applicable: false, editalReviewed: false, hiddenTransferCostsBRL: 0, resaleStigmaNote: "", historyClarity: "clear" as const, legalTransferRiskNote: "",

@@ -1,6 +1,14 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../../src/generated/prisma/client";
 import { computeGoalFit } from "../../src/lib/scoring/goalFit";
+import { computeDecision } from "../../src/lib/scoring/decision";
+import {
+  toRiskCheck,
+  toConditionReview,
+  toBuyingGoal,
+  CAR_INCLUDE,
+  type DbCarWithRelations,
+} from "../../src/lib/aggregate";
 import type {
   BodyType,
   BuyingGoal,
@@ -22,36 +30,7 @@ export interface ApplyGoalFilterSummary {
   rejected: number;
 }
 
-function toCar(row: {
-  id: string;
-  brand: string;
-  model: string;
-  trim: string;
-  year: number;
-  modelYear: number;
-  mileageKm: number | null;
-  askingPriceBRL: number;
-  city: string;
-  state: string;
-  sellerType: string;
-  fuel: string;
-  transmission: string;
-  bodyType: string;
-  color: string;
-  sourceUrl: string;
-  sourcePlatform: string;
-  notes: string;
-  plate: string | null;
-  chassis: string | null;
-  photos: string;
-  pipelineStage: string;
-  createdAt: Date;
-  updatedAt: Date;
-  manualVerdictOverride: string | null;
-  overrideReason: string | null;
-  stageReason: string | null;
-  fipeValueBRL: number | null;
-}): Car {
+function toCar(row: DbCarWithRelations): Car {
   return {
     id: row.id,
     brand: row.brand,
@@ -85,39 +64,24 @@ function toCar(row: {
   };
 }
 
-function toGoal(row: {
-  id: string;
-  name: string;
-  active: boolean;
-  budgetMinBRL: number;
-  budgetMaxBRL: number;
-  minYear: number;
-  maxMileageKm: number;
-  requiredFeatures: string;
-  preferredBodyTypes: string;
-  preferredBrands: string;
-  excludedBrandsModels: string;
-  fuelEconomyThresholdKmL: number;
-  minResaleLiquidityScore: number;
-  familySpaceRequired: boolean;
-}): BuyingGoal {
-  return {
-    id: row.id,
-    name: row.name,
-    active: row.active,
-    budgetMinBRL: row.budgetMinBRL,
-    budgetMaxBRL: row.budgetMaxBRL,
-    minYear: row.minYear,
-    maxMileageKm: row.maxMileageKm,
-    requiredFeatures: JSON.parse(row.requiredFeatures) as string[],
-    preferredBodyTypes: JSON.parse(row.preferredBodyTypes) as BodyType[],
-    preferredBrands: JSON.parse(row.preferredBrands) as string[],
-    excludedBrandsModels: JSON.parse(row.excludedBrandsModels) as string[],
-    fuelEconomyThresholdKmL: row.fuelEconomyThresholdKmL,
-    minResaleLiquidityScore: row.minResaleLiquidityScore,
-    familySpaceRequired: row.familySpaceRequired,
-  };
-}
+const EMPTY_RISK = {
+  items: [] as import("../../src/lib/types").RiskCheckItem[],
+  caixaReview: {
+    applicable: false,
+    editalReviewed: false,
+    hiddenTransferCostsBRL: 0,
+    resaleStigmaNote: "",
+    historyClarity: "clear" as const,
+    legalTransferRiskNote: "",
+  },
+  score: 100,
+};
+
+const EMPTY_CONDITION = {
+  fields: [] as import("../../src/lib/types").ConditionField[],
+  mechanicNotes: "Not inspected yet.",
+  score: 50,
+};
 
 export async function applyGoalFilter(
   prisma: PrismaClient,
@@ -129,10 +93,11 @@ export async function applyGoalFilter(
   if (!goalRow) {
     throw new ApplyGoalFilterError("No active buying goal configured.");
   }
-  const goal = toGoal(goalRow);
+  const goal = toBuyingGoal(goalRow);
 
   const cars = await prisma.car.findMany({
     where: { pipelineStage: { in: ["new_lead", "parked"] } },
+    include: CAR_INCLUDE,
   });
 
   const summary: ApplyGoalFilterSummary = {
@@ -143,7 +108,15 @@ export async function applyGoalFilter(
   };
 
   for (const row of cars) {
-    const match = computeGoalFit(toCar(row), goal);
+    const car = toCar(row);
+    const match = computeGoalFit(car, goal);
+    const risk = row.riskCheck
+      ? toRiskCheck(row.riskCheck)
+      : { carId: car.id, ...EMPTY_RISK };
+    const condition = row.conditionReview
+      ? toConditionReview(row.conditionReview)
+      : { carId: car.id, ...EMPTY_CONDITION };
+    const decision = computeDecision(car, goal, risk, condition);
 
     if (match.score === 0) {
       await prisma.car.update({
@@ -151,6 +124,8 @@ export async function applyGoalFilter(
         data: {
           pipelineStage: "rejected",
           stageReason: match.failedCriteria.join("; ") || match.explanation,
+          finalScore: decision.finalScore,
+          verdict: decision.verdict,
         },
       });
       summary.rejected += 1;
@@ -163,6 +138,8 @@ export async function applyGoalFilter(
         data: {
           pipelineStage: "parked",
           stageReason: match.failedCriteria.join("; "),
+          finalScore: decision.finalScore,
+          verdict: decision.verdict,
         },
       });
       summary.parked += 1;
@@ -174,6 +151,8 @@ export async function applyGoalFilter(
       data: {
         pipelineStage: "new_lead",
         stageReason: null,
+        finalScore: decision.finalScore,
+        verdict: decision.verdict,
       },
     });
     summary.keptNewLead += 1;

@@ -1,5 +1,6 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../../src/generated/prisma/client";
+import { requireDatabaseUrl } from "../lib/database-url";
 
 /** HTTP statuses trusted as "the listing is genuinely gone." Everything else
  * (403 from Cloudflare, timeouts, redirects to a generic homepage, etc.) is
@@ -99,7 +100,7 @@ function parseArgs(argv: string[]): CheckBrokenLinksOptions {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
+  const adapter = new PrismaBetterSqlite3({ url: requireDatabaseUrl() });
   const prisma = new PrismaClient({ adapter });
   try {
     const summary = await checkBrokenLinks(prisma, options);

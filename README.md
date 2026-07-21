@@ -14,7 +14,7 @@ Next.js 16 (App Router) · React 19 · Prisma 7 + SQLite · Tailwind v4 · Vites
 
 ```bash
 npm ci
-echo 'DATABASE_URL="file:./prisma/dev.db"' > .env
+echo 'DATABASE_URL="file:./dev.db"' > .env
 npm run db:migrate
 npm run db:seed        # seeds the active buying goal
 npm run dev            # http://localhost:3000

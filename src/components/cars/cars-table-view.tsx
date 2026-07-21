@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Search, X } from "lucide-react";
@@ -244,27 +244,9 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
   const router = useRouter();
   const pathname = usePathname();
 
-  // Local state for debounced text inputs (search, brand, state)
-  const [searchInput, setSearchInput] = useState(params.q ?? "");
-  const [brandInput, setBrandInput] = useState(params.brand ?? "");
-  const [stateInput, setStateInput] = useState(params.state ?? "");
-
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const brandDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // When server-side params change (e.g. browser back/forward), sync local inputs
-  useEffect(() => {
-    setSearchInput(params.q ?? "");
-  }, [params.q]);
-
-  useEffect(() => {
-    setBrandInput(params.brand ?? "");
-  }, [params.brand]);
-
-  useEffect(() => {
-    setStateInput(params.state ?? "");
-  }, [params.state]);
 
   // ---------------------------------------------------------------------------
   // URL mutation helpers
@@ -312,7 +294,6 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
   // Filter change handlers
 
   const handleSearchChange = (value: string) => {
-    setSearchInput(value);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       push({ q: value || undefined });
@@ -320,7 +301,6 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
   };
 
   const handleBrandChange = (value: string) => {
-    setBrandInput(value);
     if (brandDebounceRef.current) clearTimeout(brandDebounceRef.current);
     brandDebounceRef.current = setTimeout(() => {
       push({ brand: value || undefined });
@@ -328,7 +308,6 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
   };
 
   const handleStateChange = (value: string) => {
-    setStateInput(value);
     if (stateDebounceRef.current) clearTimeout(stateDebounceRef.current);
     stateDebounceRef.current = setTimeout(() => {
       push({ state: value || undefined });
@@ -413,8 +392,9 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
         <div className="relative w-full sm:w-64">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <Input
+            key={`q-${params.q ?? ""}`}
             placeholder="Search brand, model, city..."
-            value={searchInput}
+            defaultValue={params.q ?? ""}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="pl-8"
           />
@@ -422,8 +402,9 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
 
         {/* Brand — debounced text filter (contains / case-insensitive) */}
         <Input
+          key={`brand-${params.brand ?? ""}`}
           placeholder="Brand (e.g. Toyo)"
-          value={brandInput}
+          defaultValue={params.brand ?? ""}
           onChange={(e) => handleBrandChange(e.target.value)}
           className="w-full sm:w-36"
           aria-label="Filter by brand"
@@ -503,8 +484,9 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
 
         {/* State — debounced text filter */}
         <Input
+          key={`state-${params.state ?? ""}`}
           placeholder="State (e.g. SP)"
-          value={stateInput}
+          defaultValue={params.state ?? ""}
           onChange={(e) => handleStateChange(e.target.value)}
           className="w-full sm:w-28"
           aria-label="Filter by state (UF)"

@@ -1,17 +1,60 @@
 import { CarsTableView } from "@/components/cars/cars-table-view";
 import { FipeSyncAllButton } from "@/components/cars/fipe-sync-all-button";
-import { getAllBundles } from "@/lib/aggregate";
+import { getBundlesPage } from "@/lib/aggregate";
+import type { BundlesPageParams } from "@/lib/aggregate";
+import type { DealPhase, SourceChannel, LeadConfidence, Verdict } from "@/lib/types";
 
-// Reads live pipeline data at request time; never prerender (no DB at build).
+// Force dynamic rendering: reads live DB + URL search params at request time.
 export const dynamic = "force-dynamic";
 
-export default async function CarsPage() {
-  // P2 stopgap: cap at 500 newest rows so this page survives a 50k-row DB.
-  // Real fix (server-side pagination + virtualised table) is tracked in
-  // docs/ui-cars-view-scaling-plan.md. The other 4 getAllBundles() callers
-  // (page.tsx, shortlist, pipeline, compare) share this cliff and are covered
-  // by that plan — do NOT add a limit there without reading it first.
-  const bundles = await getAllBundles({ limit: 500 });
+// searchParams is a Promise in Next.js 15+ (v15.0.0-RC breaking change).
+// See node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/page.md
+export default async function CarsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
+  const sp = await searchParams;
+
+  const getString = (key: string): string | undefined => {
+    const v = sp[key];
+    return typeof v === "string" && v.length > 0 ? v : undefined;
+  };
+
+  const getInt = (key: string): number | undefined => {
+    const v = getString(key);
+    if (v === undefined) return undefined;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const getFloat = (key: string): number | undefined => {
+    const v = getString(key);
+    if (v === undefined) return undefined;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  const page = Math.max(1, getInt("page") ?? 1);
+
+  const params: BundlesPageParams = {
+    page,
+    pageSize: 50,
+    q: getString("q"),
+    brand: getString("brand"),
+    stage: getString("stage"),
+    phase: getString("phase") as DealPhase | undefined,
+    sourceChannel: getString("sourceChannel") as SourceChannel | undefined,
+    confidence: getString("confidence") as LeadConfidence | undefined,
+    state: getString("state"),
+    verdict: getString("verdict") as Verdict | undefined,
+    priceMin: getFloat("priceMin"),
+    priceMax: getFloat("priceMax"),
+    belowFipePctMin: getFloat("belowFipePctMin"),
+    sort: (getString("sort") as BundlesPageParams["sort"]) ?? "recent",
+  };
+
+  const result = await getBundlesPage(params);
 
   return (
     <div className="flex flex-col gap-6">
@@ -19,12 +62,19 @@ export default async function CarsPage() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-text-primary">All Vehicles</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            Filter by price, mileage, brand, stage, or verdict — click Price or KM to sort.
+            Filter by price, mileage, brand, stage, or verdict — click a column header to sort.
           </p>
         </div>
         <FipeSyncAllButton />
       </div>
-      <CarsTableView bundles={bundles} />
+      <CarsTableView
+        rows={result.rows}
+        total={result.total}
+        page={result.page}
+        pageSize={result.pageSize}
+        facets={result.facets}
+        params={params}
+      />
     </div>
   );
 }

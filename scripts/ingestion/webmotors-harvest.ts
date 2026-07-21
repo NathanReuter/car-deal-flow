@@ -17,7 +17,14 @@ import {
   isCliEntry,
 } from "./fetch-guards";
 import { webmotorsToWriteLead, type WebmotorsSearchResult } from "./webmotors-parse";
-import { fetchApiPage, WM_HOMEPAGE, WM_QUERIES, WM_API_BASE } from "./webmotors-list";
+import {
+  fetchApiPage,
+  WebmotorsBlockError,
+  WM_HOMEPAGE,
+  WM_QUERIES,
+  WM_API_BASE,
+} from "./webmotors-list";
+import type { Page } from "playwright";
 import {
   bumpSkip,
   createHarvestSummary,
@@ -34,6 +41,19 @@ chromium.use(stealth());
 
 // ─── Core harvest function ───────────────────────────────────────────────────
 
+/** Record an anti-bot block in the summary and persist it before aborting, so
+ * a failed run is still inspectable. */
+function recordBlock(
+  summary: HarvestSummary,
+  url: string,
+  reason: string,
+  summaryOut?: string,
+): void {
+  bumpSkip(summary, "blocked");
+  summary.errors.push({ url, error: reason });
+  if (summaryOut) writeSummary(summaryOut, summary);
+}
+
 export async function harvestWebmotors(options: {
   queries?: string[];
   maxPagesPerQuery?: number;
@@ -42,37 +62,58 @@ export async function harvestWebmotors(options: {
   ceiling?: number;
   summaryOut?: string;
   applyGoalFilter?: boolean;
+  /** Reuse an already-warmed page instead of launching a browser (tests). */
+  page?: Page;
 }): Promise<HarvestSummary> {
   const summary = createHarvestSummary("Webmotors");
   const queries = options.queries ?? WM_QUERIES;
   const maxPages = options.maxPagesPerQuery ?? 10;
   const ceiling = options.ceiling ?? DEFAULT_CEILING;
+  const usingDefaultQueries =
+    queries.length === WM_QUERIES.length && queries.every((q, i) => q === WM_QUERIES[i]);
 
-  const browser = await chromium.launch({ headless: true });
+  // Total raw results the API returned across the whole run — the basis for the
+  // plausibility guard below. A completed run that saw nothing is almost always
+  // a silent anti-bot block, not a genuinely empty market.
+  let rawResultsTotal = 0;
+
+  const ownBrowser = !options.page;
+  const browser = ownBrowser ? await chromium.launch({ headless: true }) : null;
   try {
-    const page = await browser.newPage();
+    const page = options.page ?? (await browser!.newPage());
 
-    // Warm up homepage so PerimeterX issues a valid session cookie.
-    await page.goto(WM_HOMEPAGE, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForTimeout(3000);
+    if (ownBrowser) {
+      // Warm up homepage so PerimeterX issues a valid session cookie.
+      await page.goto(WM_HOMEPAGE, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await page.waitForTimeout(3000);
+    }
 
     // Track seen IDs to skip duplicates across keyword passes.
     const seen = new Set<string>();
 
     outer: for (const keyword of queries) {
       for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+        const pageUrl = `${WM_API_BASE}?q=${keyword}&pagina=${pageNo}`;
         let results: WebmotorsSearchResult[];
         try {
           results = await fetchApiPage(page, keyword, pageNo);
         } catch (err) {
+          // Anti-bot block ⇒ fail closed: record it and abort the whole run so
+          // the orchestrator marks the source failed instead of silently
+          // truncating (issue #8).
+          if (err instanceof WebmotorsBlockError) {
+            recordBlock(summary, pageUrl, err.message, options.summaryOut);
+            throw err;
+          }
           bumpSkip(summary, "fetch_error");
           summary.errors.push({
-            url: `${WM_API_BASE}?q=${keyword}&pagina=${pageNo}`,
+            url: pageUrl,
             error: err instanceof Error ? err.message : String(err),
           });
           break;
         }
 
+        rawResultsTotal += results.length;
         if (results.length === 0) break;
 
         for (const r of results) {
@@ -117,7 +158,24 @@ export async function harvestWebmotors(options: {
       }
     }
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
+  }
+
+  // Plausibility guard (issue #8): the mid-run block above catches a session
+  // that degrades partway through. This catches one that never worked — a
+  // completed default run that scanned zero raw results is almost certainly a
+  // block at warm-up, not an empty market. Skipped for custom query sets,
+  // which may legitimately return nothing.
+  if (usingDefaultQueries && rawResultsTotal === 0) {
+    const reason = `no results across ${queries.length} default queries — probable silent block`;
+    recordBlock(summary, WM_API_BASE, reason, options.summaryOut);
+    throw new WebmotorsBlockError(reason);
+  }
+  if (rawResultsTotal > 0 && rawResultsTotal < queries.length) {
+    bumpSkip(summary, "low_yield");
+    console.error(
+      `[webmotors] low yield: ${rawResultsTotal} raw result(s) across ${queries.length} queries — possible partial block`,
+    );
   }
 
   if (options.summaryOut) writeSummary(options.summaryOut, summary);

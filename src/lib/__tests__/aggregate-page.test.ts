@@ -248,11 +248,30 @@ describe("getBundlesPage", () => {
 
   // ── filters ───────────────────────────────────────────────────────────────
 
-  it("brand filter narrows to matching brand", async () => {
+  it("brand filter narrows to matching brand (exact)", async () => {
     await seedGoal(ctx.prisma);
     await seedCars(ctx.prisma);
 
     const result = await getBundlesPage({ brand: "Toyota" }, ctx.prisma);
+    expect(result.total).toBe(1);
+    expect(result.rows[0].car.brand).toBe("Toyota");
+  });
+
+  it("brand filter matches partial brand text (contains)", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+
+    // "yot" is a substring of "Toyota" — should still find 1 result
+    const result = await getBundlesPage({ brand: "yot" }, ctx.prisma);
+    expect(result.total).toBe(1);
+    expect(result.rows[0].car.brand).toBe("Toyota");
+  });
+
+  it("brand filter is case-insensitive (SQLite ASCII)", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+
+    const result = await getBundlesPage({ brand: "toyota" }, ctx.prisma);
     expect(result.total).toBe(1);
     expect(result.rows[0].car.brand).toBe("Toyota");
   });

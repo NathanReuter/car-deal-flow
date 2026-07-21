@@ -47,6 +47,15 @@ function withFacetCount(label: string, count: number | undefined): string {
   return count !== undefined ? `${label} (${count})` : label;
 }
 
+/**
+ * Compute FIPE discount percentage.
+ * Returns a number [0-100] when fipeValueBRL is present and > 0, else null.
+ */
+function fipeDeltaPct(askingPriceBRL: number, fipeValueBRL: number | null | undefined): number | null {
+  if (!fipeValueBRL || fipeValueBRL <= 0) return null;
+  return Math.round((1 - askingPriceBRL / fipeValueBRL) * 100);
+}
+
 // ---------------------------------------------------------------------------
 // ActiveFilterChips
 
@@ -113,6 +122,21 @@ function Pager({ page, total, pageSize, onPage }: PagerProps) {
 
 // ---------------------------------------------------------------------------
 // Sortable TH
+//
+// Sort direction per key (matches SQL in getBundlesPage):
+//   score  → desc (highest first)
+//   year   → desc (newest first)
+//   recent → desc (newest first)
+//   price  → asc  (cheapest first)
+//   mileage → asc (lowest first)
+
+const SORT_DIRECTION: Record<SortKey, "ascending" | "descending"> = {
+  score: "descending",
+  year: "descending",
+  recent: "descending",
+  price: "ascending",
+  mileage: "ascending",
+};
 
 interface SortableTHProps {
   children: React.ReactNode;
@@ -124,7 +148,7 @@ interface SortableTHProps {
 
 function SortableTH({ children, sortKey, currentSort, onSort, className }: SortableTHProps) {
   const isActive = currentSort === sortKey;
-  const ariaSort: React.AriaAttributes["aria-sort"] = isActive ? "ascending" : "none";
+  const ariaSort: React.AriaAttributes["aria-sort"] = isActive ? SORT_DIRECTION[sortKey] : "none";
   return (
     <TH
       className={className}
@@ -137,12 +161,79 @@ function SortableTH({ children, sortKey, currentSort, onSort, className }: Sorta
       >
         {children}
         {isActive ? (
-          <span aria-hidden="true" className="text-xs">▼</span>
+          <span aria-hidden="true" className="text-xs">
+            {SORT_DIRECTION[sortKey] === "ascending" ? "▲" : "▼"}
+          </span>
         ) : (
           <span aria-hidden="true" className="text-xs opacity-30">▼</span>
         )}
       </button>
     </TH>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// FIPE-Δ display cell
+
+function FipeDeltaCell({ askingPriceBRL, fipeValueBRL }: { askingPriceBRL: number; fipeValueBRL: number | null | undefined }) {
+  const pct = fipeDeltaPct(askingPriceBRL, fipeValueBRL);
+  if (pct === null) return <span className="text-text-muted">—</span>;
+
+  let colorClass = "text-text-muted";
+  if (pct >= 20) colorClass = "text-green-600 dark:text-green-400 font-semibold";
+  else if (pct >= 10) colorClass = "text-green-500 dark:text-green-300";
+
+  return <span className={`tabular-nums ${colorClass}`}>{pct > 0 ? `-${pct}%` : `+${Math.abs(pct)}%`}</span>;
+}
+
+// ---------------------------------------------------------------------------
+// Mobile card (< sm breakpoint)
+
+function CarCard({ b, pathname }: { b: CarBundle; pathname: string }) {
+  const pct = fipeDeltaPct(b.car.askingPriceBRL, b.car.fipeValueBRL);
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-card p-3">
+      {/* Header row: brand/model + score */}
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <Link
+            href={`/cars/${b.car.id}`}
+            className="font-semibold text-text-primary hover:text-accent"
+          >
+            {b.car.brand} {b.car.model}
+          </Link>
+          {b.car.trim && <div className="text-xs text-text-muted">{b.car.trim}</div>}
+        </div>
+        <span className="shrink-0 tabular-nums font-semibold text-text-primary">
+          {b.decision.finalScore}
+        </span>
+      </div>
+
+      {/* Price + FIPE Δ */}
+      <div className="flex items-center gap-3 text-sm">
+        <span className="tabular-nums font-medium text-text-primary">{formatBRL(b.car.askingPriceBRL)}</span>
+        {pct !== null && (
+          <FipeDeltaCell askingPriceBRL={b.car.askingPriceBRL} fipeValueBRL={b.car.fipeValueBRL} />
+        )}
+      </div>
+
+      {/* Year / KM / Location */}
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-text-secondary">
+        <span className="tabular-nums">{b.car.year}</span>
+        <span className="tabular-nums">{formatKm(b.car.mileageKm)}</span>
+        <span>{b.car.city}/{b.car.state}</span>
+      </div>
+
+      {/* Badges */}
+      <div className="flex flex-wrap items-center gap-1">
+        <PhaseBadge dealPhase={b.car.dealPhase} />
+        {b.car.dealPhase === "pre_repossession" && (
+          <UrgencyBadge urgency={b.car.repasse?.urgency} />
+        )}
+        <ConfidenceBadge confidence={b.car.confidence} />
+        <VerdictBadge verdict={b.decision.verdict} />
+      </div>
+    </div>
   );
 }
 
@@ -153,14 +244,27 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
   const router = useRouter();
   const pathname = usePathname();
 
-  // Local state for the debounced search input only
+  // Local state for debounced text inputs (search, brand, state)
   const [searchInput, setSearchInput] = useState(params.q ?? "");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [brandInput, setBrandInput] = useState(params.brand ?? "");
+  const [stateInput, setStateInput] = useState(params.state ?? "");
 
-  // When server-side params change (e.g. browser back/forward), sync local input
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const brandDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stateDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When server-side params change (e.g. browser back/forward), sync local inputs
   useEffect(() => {
     setSearchInput(params.q ?? "");
   }, [params.q]);
+
+  useEffect(() => {
+    setBrandInput(params.brand ?? "");
+  }, [params.brand]);
+
+  useEffect(() => {
+    setStateInput(params.state ?? "");
+  }, [params.state]);
 
   // ---------------------------------------------------------------------------
   // URL mutation helpers
@@ -212,6 +316,22 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       push({ q: value || undefined });
+    }, 250);
+  };
+
+  const handleBrandChange = (value: string) => {
+    setBrandInput(value);
+    if (brandDebounceRef.current) clearTimeout(brandDebounceRef.current);
+    brandDebounceRef.current = setTimeout(() => {
+      push({ brand: value || undefined });
+    }, 250);
+  };
+
+  const handleStateChange = (value: string) => {
+    setStateInput(value);
+    if (stateDebounceRef.current) clearTimeout(stateDebounceRef.current);
+    stateDebounceRef.current = setTimeout(() => {
+      push({ state: value || undefined });
     }, 250);
   };
 
@@ -285,14 +405,6 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
 
   const currentSort: SortKey = params.sort ?? "recent";
 
-  // Brand options derived from facets keys — all brands that appear in the current result set.
-  // We also keep the server-params brand in the list if it's set (in case filtered result is empty).
-  const brandOptions = Array.from(
-    new Set([
-      ...(params.brand ? [params.brand] : []),
-    ]),
-  );
-
   return (
     <div className="flex flex-col gap-4">
       {/* ── Filter row ── */}
@@ -308,11 +420,11 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
           />
         </div>
 
-        {/* Brand — text filter (populated from params if set; full brand list not available without extra server query) */}
+        {/* Brand — debounced text filter (contains / case-insensitive) */}
         <Input
-          placeholder="Brand (e.g. Toyota)"
-          value={params.brand ?? ""}
-          onChange={(e) => push({ brand: e.target.value || undefined })}
+          placeholder="Brand (e.g. Toyo)"
+          value={brandInput}
+          onChange={(e) => handleBrandChange(e.target.value)}
           className="w-full sm:w-36"
           aria-label="Filter by brand"
         />
@@ -389,11 +501,11 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
           </SelectContent>
         </Select>
 
-        {/* State */}
+        {/* State — debounced text filter */}
         <Input
           placeholder="State (e.g. SP)"
-          value={params.state ?? ""}
-          onChange={(e) => push({ state: e.target.value || undefined })}
+          value={stateInput}
+          onChange={(e) => handleStateChange(e.target.value)}
           className="w-full sm:w-28"
           aria-label="Filter by state (UF)"
           maxLength={2}
@@ -455,87 +567,112 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
         </div>
       )}
 
-      {/* ── Table ── */}
-      <Table>
-        <THead>
-          <TR>
-            <SortableTH sortKey="recent" currentSort={currentSort} onSort={handleSort}>
-              Vehicle
-            </SortableTH>
-            <SortableTH sortKey="year" currentSort={currentSort} onSort={handleSort}>
-              Year / KM
-            </SortableTH>
-            <SortableTH sortKey="price" currentSort={currentSort} onSort={handleSort}>
-              Price
-            </SortableTH>
-            <TH>Location</TH>
-            <TH>Phase</TH>
-            <TH>Seller</TH>
-            <TH>Stage</TH>
-            <TH>Verdict</TH>
-            <SortableTH
-              sortKey="score"
-              currentSort={currentSort}
-              onSort={handleSort}
-              className="text-right"
+      {/* ── Mobile card layout (<sm) ── */}
+      <div className="flex flex-col gap-3 sm:hidden">
+        {rows.length === 0 ? (
+          <p className="py-8 text-center text-sm text-text-muted">
+            No vehicles match these filters.{" "}
+            <Link
+              href={pathname}
+              className="underline hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-              Score
-            </SortableTH>
-          </TR>
-        </THead>
-        <TBody>
-          {rows.map((b) => (
-            <TR key={b.car.id} className="cursor-pointer">
-              <TD>
-                <Link
-                  href={`/cars/${b.car.id}`}
-                  className="font-medium text-text-primary hover:text-accent"
-                >
-                  {b.car.brand} {b.car.model}
-                </Link>
-                <div className="text-xs text-text-muted">{b.car.trim}</div>
-              </TD>
-              <TD className="tabular-nums text-text-secondary">
-                {b.car.year} · {formatKm(b.car.mileageKm)}
-              </TD>
-              <TD className="tabular-nums font-medium">{formatBRL(b.car.askingPriceBRL)}</TD>
-              <TD className="text-text-secondary">
-                {b.car.city}/{b.car.state}
-              </TD>
-              <TD>
-                <div className="flex flex-wrap items-center gap-1">
-                  <PhaseBadge dealPhase={b.car.dealPhase} />
-                  {b.car.dealPhase === "pre_repossession" && (
-                    <UrgencyBadge urgency={b.car.repasse?.urgency} />
-                  )}
-                  <ConfidenceBadge confidence={b.car.confidence} />
-                </div>
-              </TD>
-              <TD className="text-text-secondary">{SELLER_TYPE_LABEL[b.car.sellerType]}</TD>
-              <TD className="text-text-secondary">
-                {PIPELINE_STAGES.find((s) => s.id === b.car.pipelineStage)?.label}
-              </TD>
-              <TD>
-                <VerdictBadge verdict={b.decision.verdict} />
-              </TD>
-              <TD className="text-right tabular-nums font-semibold">{b.decision.finalScore}</TD>
-            </TR>
-          ))}
-          {rows.length === 0 && (
+              Clear filters
+            </Link>
+          </p>
+        ) : (
+          rows.map((b) => <CarCard key={b.car.id} b={b} pathname={pathname} />)
+        )}
+      </div>
+
+      {/* ── Desktop table (sm+) ── */}
+      <div className="hidden sm:block">
+        <Table>
+          <THead>
             <TR>
-              <TD colSpan={9} className="py-8 text-center text-text-muted">
-                No vehicles match these filters.{" "}
-                <Link
-                  href={pathname}
-                  className="underline hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                >
-                  Clear filters
-                </Link>
-              </TD>
+              <SortableTH sortKey="recent" currentSort={currentSort} onSort={handleSort}>
+                Vehicle
+              </SortableTH>
+              <SortableTH sortKey="year" currentSort={currentSort} onSort={handleSort}>
+                Year
+              </SortableTH>
+              <SortableTH sortKey="mileage" currentSort={currentSort} onSort={handleSort}>
+                KM
+              </SortableTH>
+              <SortableTH sortKey="price" currentSort={currentSort} onSort={handleSort}>
+                Price
+              </SortableTH>
+              <TH>FIPE Δ</TH>
+              <TH>Location</TH>
+              <TH>Phase</TH>
+              <TH>Seller</TH>
+              <TH>Stage</TH>
+              <TH>Verdict</TH>
+              <SortableTH
+                sortKey="score"
+                currentSort={currentSort}
+                onSort={handleSort}
+                className="text-right"
+              >
+                Score
+              </SortableTH>
             </TR>
-          )}
-        </TBody>
-      </Table>
+          </THead>
+          <TBody>
+            {rows.map((b) => (
+              <TR key={b.car.id} className="cursor-pointer">
+                <TD>
+                  <Link
+                    href={`/cars/${b.car.id}`}
+                    className="font-medium text-text-primary hover:text-accent"
+                  >
+                    {b.car.brand} {b.car.model}
+                  </Link>
+                  <div className="text-xs text-text-muted">{b.car.trim}</div>
+                </TD>
+                <TD className="tabular-nums text-text-secondary">{b.car.year}</TD>
+                <TD className="tabular-nums text-text-secondary">{formatKm(b.car.mileageKm)}</TD>
+                <TD className="tabular-nums font-medium">{formatBRL(b.car.askingPriceBRL)}</TD>
+                <TD>
+                  <FipeDeltaCell askingPriceBRL={b.car.askingPriceBRL} fipeValueBRL={b.car.fipeValueBRL} />
+                </TD>
+                <TD className="text-text-secondary">
+                  {b.car.city}/{b.car.state}
+                </TD>
+                <TD>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <PhaseBadge dealPhase={b.car.dealPhase} />
+                    {b.car.dealPhase === "pre_repossession" && (
+                      <UrgencyBadge urgency={b.car.repasse?.urgency} />
+                    )}
+                    <ConfidenceBadge confidence={b.car.confidence} />
+                  </div>
+                </TD>
+                <TD className="text-text-secondary">{SELLER_TYPE_LABEL[b.car.sellerType]}</TD>
+                <TD className="text-text-secondary">
+                  {PIPELINE_STAGES.find((s) => s.id === b.car.pipelineStage)?.label}
+                </TD>
+                <TD>
+                  <VerdictBadge verdict={b.decision.verdict} />
+                </TD>
+                <TD className="text-right tabular-nums font-semibold">{b.decision.finalScore}</TD>
+              </TR>
+            ))}
+            {rows.length === 0 && (
+              <TR>
+                <TD colSpan={11} className="py-8 text-center text-text-muted">
+                  No vehicles match these filters.{" "}
+                  <Link
+                    href={pathname}
+                    className="underline hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  >
+                    Clear filters
+                  </Link>
+                </TD>
+              </TR>
+            )}
+          </TBody>
+        </Table>
+      </div>
 
       {/* ── Pager ── */}
       <Pager page={page} total={total} pageSize={pageSize} onPage={handlePage} />

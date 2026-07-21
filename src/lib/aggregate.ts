@@ -258,7 +258,7 @@ export async function getBundlesPage(
     where.pipelineStage = params.stage;
   }
 
-  if (params.brand !== undefined) where.brand = params.brand;
+  if (params.brand !== undefined) where.brand = { contains: params.brand };
   if (params.phase !== undefined) where.dealPhase = params.phase;
   if (params.sourceChannel !== undefined) where.sourceChannel = params.sourceChannel;
   if (params.confidence !== undefined) where.confidence = params.confidence;
@@ -310,7 +310,8 @@ export async function getBundlesPage(
       orderBy.push({ year: "desc" });
       break;
     case "mileage":
-      orderBy.push({ mileageKm: "asc" });
+      // nulls: "last" pushes rows with no odometer data to the bottom (Prisma 7+ / SQLite).
+      orderBy.push({ mileageKm: { sort: "asc", nulls: "last" } });
       break;
     case "recent":
     default:

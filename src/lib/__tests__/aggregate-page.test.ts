@@ -570,6 +570,74 @@ describe("getBundlesPage", () => {
     expect(result.total).toBe(0);
   });
 
+  it("belowFipePctMin excludes expired cars when no stage filter (P5)", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+    // car6 is expired — give it a qualifying FIPE value; it must NOT appear in results
+    const car6 = await ctx.prisma.car.findFirst({ where: { brand: "Chevrolet" } });
+    expect(car6!.pipelineStage).toBe("expired");
+    await ctx.prisma.car.update({
+      where: { id: car6!.id },
+      data: { fipeValueBRL: 200_000 }, // 65_000 <= 200_000 * 0.80 = 160_000 ✓ (would qualify by price)
+    });
+
+    // With no stage filter, expired should be hidden even though price qualifies
+    const result = await getBundlesPage({ belowFipePctMin: 20 }, ctx.prisma);
+    const brands = result.rows.map((b) => b.car.brand);
+    expect(brands).not.toContain("Chevrolet");
+    expect(result.total).toBe(0); // no non-expired cars have a qualifying FIPE value
+  });
+
+  it("belowFipePctMin with explicit stage=expired only returns expired cars (P5)", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+    // Give expired car6 a qualifying FIPE value
+    const car6 = await ctx.prisma.car.findFirst({ where: { brand: "Chevrolet" } });
+    await ctx.prisma.car.update({
+      where: { id: car6!.id },
+      data: { fipeValueBRL: 200_000 },
+    });
+
+    // Explicit stage=expired — should include the expired car if its price qualifies
+    const result = await getBundlesPage({ belowFipePctMin: 20, stage: "expired" }, ctx.prisma);
+    expect(result.total).toBe(1);
+    expect(result.rows[0].car.brand).toBe("Chevrolet");
+  });
+
+  // ── pagination clamps (P4) ────────────────────────────────────────────────
+
+  it("pageSize is clamped to 200 when a larger value is requested", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+
+    const result = await getBundlesPage({ pageSize: 9999 }, ctx.prisma);
+    expect(result.pageSize).toBe(200);
+  });
+
+  it("pageSize below 1 is floored to 1", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+
+    const result = await getBundlesPage({ pageSize: 0 }, ctx.prisma);
+    expect(result.pageSize).toBe(1);
+  });
+
+  it("page below 1 is floored to 1", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+
+    const result = await getBundlesPage({ page: -5 }, ctx.prisma);
+    expect(result.page).toBe(1);
+  });
+
+  it("page above 100_000 is clamped to 100_000", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+
+    const result = await getBundlesPage({ page: 999_999 }, ctx.prisma);
+    expect(result.page).toBe(100_000);
+  });
+
   // ── getAllBundles unchanged ────────────────────────────────────────────────
 
   it("getAllBundles still works and is unaffected by this slice", async () => {

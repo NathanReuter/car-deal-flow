@@ -1,5 +1,5 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
-import { PrismaClient } from "../../src/generated/prisma/client";
+import { PrismaClient, Prisma } from "../../src/generated/prisma/client";
 import {
   toBuyingGoal,
   buildBundle,
@@ -43,48 +43,62 @@ export async function applyGoalFilter(
     rejected: 0,
   };
 
+  // Build each per-car update upfront, accumulate counts, then run all inside
+  // a single transaction so SQLite only fsyncs once.
+  const updates: Prisma.PrismaPromise<unknown>[] = [];
+
   for (const row of cars) {
     const bundle = buildBundle(row, goal);
     const { goalMatch, decision } = bundle;
 
     if (goalMatch.score === 0) {
-      await prisma.car.update({
-        where: { id: row.id },
-        data: {
-          pipelineStage: "rejected",
-          stageReason: goalMatch.failedCriteria.join("; ") || goalMatch.explanation,
-          finalScore: decision.finalScore,
-          verdict: decision.verdict,
-        },
-      });
+      updates.push(
+        prisma.car.update({
+          where: { id: row.id },
+          data: {
+            pipelineStage: "rejected",
+            stageReason: goalMatch.failedCriteria.join("; ") || goalMatch.explanation,
+            finalScore: decision.finalScore,
+            verdict: decision.verdict,
+          },
+        }),
+      );
       summary.rejected += 1;
       continue;
     }
 
     if (goalMatch.score < minGoalFit) {
-      await prisma.car.update({
-        where: { id: row.id },
-        data: {
-          pipelineStage: "parked",
-          stageReason: goalMatch.failedCriteria.join("; "),
-          finalScore: decision.finalScore,
-          verdict: decision.verdict,
-        },
-      });
+      updates.push(
+        prisma.car.update({
+          where: { id: row.id },
+          data: {
+            pipelineStage: "parked",
+            stageReason: goalMatch.failedCriteria.join("; "),
+            finalScore: decision.finalScore,
+            verdict: decision.verdict,
+          },
+        }),
+      );
       summary.parked += 1;
       continue;
     }
 
-    await prisma.car.update({
-      where: { id: row.id },
-      data: {
-        pipelineStage: "new_lead",
-        stageReason: null,
-        finalScore: decision.finalScore,
-        verdict: decision.verdict,
-      },
-    });
+    updates.push(
+      prisma.car.update({
+        where: { id: row.id },
+        data: {
+          pipelineStage: "new_lead",
+          stageReason: null,
+          finalScore: decision.finalScore,
+          verdict: decision.verdict,
+        },
+      }),
+    );
     summary.keptNewLead += 1;
+  }
+
+  if (updates.length > 0) {
+    await prisma.$transaction(updates);
   }
 
   return summary;

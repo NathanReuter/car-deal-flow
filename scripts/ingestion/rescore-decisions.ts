@@ -21,12 +21,31 @@ export async function rescoreDecisions(
 
   const cars = await prisma.car.findMany({ include: CAR_INCLUDE });
 
+  // Group car IDs by their computed (finalScore, verdict) pair so we can issue
+  // one updateMany per distinct pair instead of one update per car.
+  // This removes the N sequential write-locks on SQLite.
+  const groups = new Map<string, { finalScore: number; verdict: string; ids: string[] }>();
   for (const row of cars) {
     const { decision } = buildBundle(row, goal);
-    await prisma.car.update({
-      where: { id: row.id },
-      data: { finalScore: decision.finalScore, verdict: decision.verdict },
-    });
+    const key = `${decision.finalScore}|${decision.verdict}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.ids.push(row.id);
+    } else {
+      groups.set(key, { finalScore: decision.finalScore, verdict: decision.verdict, ids: [row.id] });
+    }
+  }
+
+  // Execute all updateMany calls inside a single transaction (one fsync).
+  if (groups.size > 0) {
+    await prisma.$transaction(
+      [...groups.values()].map(({ finalScore, verdict, ids }) =>
+        prisma.car.updateMany({
+          where: { id: { in: ids } },
+          data: { finalScore, verdict },
+        }),
+      ),
+    );
   }
 
   console.log(`Scored ${cars.length} cars.`);

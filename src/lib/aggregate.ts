@@ -244,8 +244,9 @@ export async function getBundlesPage(
   params: BundlesPageParams,
   db: typeof prisma = prisma,
 ): Promise<BundlesPage> {
-  const page = Math.max(1, params.page ?? 1);
-  const pageSize = Math.max(1, params.pageSize ?? 50);
+  const MAX_PAGE_SIZE = 200;
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, params.pageSize ?? 50));
+  const page = Math.min(100_000, Math.max(1, params.page ?? 1));
   const skip = (page - 1) * pageSize;
 
   // Build the Prisma where clause
@@ -286,12 +287,27 @@ export async function getBundlesPage(
   // with $queryRaw and add them as an id-in filter.
   if (params.belowFipePctMin !== undefined) {
     const threshold = params.belowFipePctMin;
-    const rows = await db.$queryRaw<{ id: string }[]>`
-      SELECT id FROM Car
-      WHERE fipeValueBRL IS NOT NULL
-        AND fipeValueBRL > 0
-        AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
-    `;
+    // Apply the same stage constraint as the main where clause so the raw
+    // query scans only the relevant subset of rows (not the entire table).
+    let rows: { id: string }[];
+    if (params.stage) {
+      const stage = params.stage;
+      rows = await db.$queryRaw<{ id: string }[]>`
+        SELECT id FROM Car
+        WHERE fipeValueBRL IS NOT NULL
+          AND fipeValueBRL > 0
+          AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
+          AND pipelineStage = ${stage}
+      `;
+    } else {
+      rows = await db.$queryRaw<{ id: string }[]>`
+        SELECT id FROM Car
+        WHERE fipeValueBRL IS NOT NULL
+          AND fipeValueBRL > 0
+          AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
+          AND pipelineStage != 'expired'
+      `;
+    }
     const eligibleIds = rows.map((r) => r.id);
     // Intersect with any existing id filter (none in base path)
     where.id = { in: eligibleIds };

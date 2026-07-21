@@ -3,6 +3,12 @@ import { FipeSyncAllButton } from "@/components/cars/fipe-sync-all-button";
 import { getBundlesPage } from "@/lib/aggregate";
 import type { BundlesPageParams } from "@/lib/aggregate";
 import type { DealPhase, SourceChannel, LeadConfidence, Verdict } from "@/lib/types";
+import {
+  DEAL_PHASE_LABEL,
+  SOURCE_CHANNEL_LABEL,
+  CONFIDENCE_LABEL,
+  VERDICT_LABEL,
+} from "@/lib/types";
 
 // Force dynamic rendering: reads live DB + URL search params at request time.
 export const dynamic = "force-dynamic";
@@ -37,21 +43,35 @@ export default async function CarsPage({
 
   const page = Math.max(1, getInt("page") ?? 1);
 
+  // Allowlist helpers — unknown values become undefined so they are ignored
+  // rather than forwarded as unrecognised filter predicates.
+  const VALID_PHASES = new Set(Object.keys(DEAL_PHASE_LABEL) as DealPhase[]);
+  const VALID_CHANNELS = new Set(Object.keys(SOURCE_CHANNEL_LABEL) as SourceChannel[]);
+  const VALID_CONFIDENCES = new Set(Object.keys(CONFIDENCE_LABEL) as LeadConfidence[]);
+  const VALID_VERDICTS = new Set(Object.keys(VERDICT_LABEL) as Verdict[]);
+  type SortValue = NonNullable<BundlesPageParams["sort"]>;
+  const VALID_SORTS = new Set<SortValue>(["score", "price", "year", "mileage", "recent"]);
+
+  const validateEnum = <T extends string>(value: string | undefined, allowed: Set<T>): T | undefined => {
+    if (value === undefined) return undefined;
+    return allowed.has(value as T) ? (value as T) : undefined;
+  };
+
   const params: BundlesPageParams = {
     page,
     pageSize: 50,
     q: getString("q"),
     brand: getString("brand"),
     stage: getString("stage"),
-    phase: getString("phase") as DealPhase | undefined,
-    sourceChannel: getString("sourceChannel") as SourceChannel | undefined,
-    confidence: getString("confidence") as LeadConfidence | undefined,
+    phase: validateEnum(getString("phase"), VALID_PHASES),
+    sourceChannel: validateEnum(getString("sourceChannel"), VALID_CHANNELS),
+    confidence: validateEnum(getString("confidence"), VALID_CONFIDENCES),
     state: getString("state"),
-    verdict: getString("verdict") as Verdict | undefined,
+    verdict: validateEnum(getString("verdict"), VALID_VERDICTS),
     priceMin: getFloat("priceMin"),
     priceMax: getFloat("priceMax"),
     belowFipePctMin: getFloat("belowFipePctMin"),
-    sort: (getString("sort") as BundlesPageParams["sort"]) ?? "recent",
+    sort: validateEnum(getString("sort"), VALID_SORTS) ?? "recent",
   };
 
   const result = await getBundlesPage(params);

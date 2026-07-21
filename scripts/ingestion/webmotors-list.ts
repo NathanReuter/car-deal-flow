@@ -69,6 +69,74 @@ interface WmApiResponse {
   SearchResults?: WebmotorsSearchResult[];
 }
 
+// ─── PerimeterX block detection ───────────────────────────────────────────────
+
+/** Thrown when the internal JSON API returns an anti-bot block instead of
+ * results. Callers treat this as fatal (fail-closed) rather than end-of-results. */
+export class WebmotorsBlockError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "WebmotorsBlockError";
+  }
+}
+
+/** Body substrings that mark a PerimeterX / anti-bot wall (served as HTTP 200
+ * HTML). Case-insensitive. */
+export const WM_BLOCK_MARKERS: RegExp[] = [
+  /access to this page has been denied/i,
+  /px-captcha/i,
+  /_pxhd/i,
+  /perimeterx/i,
+];
+
+const WM_HTML_PREFIX = /^\s*<(?:!doctype|html)\b/i;
+
+/** Outcome of a raw API response, classified in Node (the fetch itself runs in
+ * the browser context and only returns raw materials). */
+export type WmApiOutcome =
+  | { kind: "ok"; results: WebmotorsSearchResult[] }
+  | { kind: "empty" }
+  | { kind: "blocked"; reason: string };
+
+/**
+ * Pure classifier: distinguishes a genuine empty page from an anti-bot block.
+ *
+ * - `!ok` (403/429/5xx)                 → blocked
+ * - HTML content-type or anti-bot body  → blocked
+ * - unparseable / non-object JSON       → blocked
+ * - object with non-empty SearchResults → ok
+ * - object with empty/missing results   → empty (genuine end-of-results)
+ */
+export function classifyWmApiResponse(raw: {
+  ok: boolean;
+  status: number;
+  contentType: string;
+  body: string;
+}): WmApiOutcome {
+  if (!raw.ok) return { kind: "blocked", reason: `HTTP ${raw.status}` };
+
+  if (/html/i.test(raw.contentType) || WM_HTML_PREFIX.test(raw.body)) {
+    return { kind: "blocked", reason: "anti-bot HTML page" };
+  }
+  if (WM_BLOCK_MARKERS.some((re) => re.test(raw.body))) {
+    return { kind: "blocked", reason: "anti-bot marker in response body" };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw.body);
+  } catch {
+    return { kind: "blocked", reason: "non-JSON response body" };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { kind: "blocked", reason: "unexpected response shape" };
+  }
+
+  const results = (parsed as WmApiResponse).SearchResults;
+  if (Array.isArray(results) && results.length > 0) return { kind: "ok", results };
+  return { kind: "empty" };
+}
+
 async function fetchApiPage(
   page: Page,
   keyword: string,

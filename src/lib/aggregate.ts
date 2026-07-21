@@ -181,9 +181,13 @@ function buildBundle(row: DbCarWithRelations, goal: BuyingGoal): CarBundle {
   return { car, decision, goalMatch, market, risk, condition };
 }
 
-export async function getAllBundles(): Promise<CarBundle[]> {
+export async function getAllBundles(opts?: { limit?: number }): Promise<CarBundle[]> {
   const [rows, goal] = await Promise.all([
-    prisma.car.findMany({ include: CAR_INCLUDE, orderBy: { createdAt: "asc" } }),
+    prisma.car.findMany({
+      include: CAR_INCLUDE,
+      orderBy: { createdAt: opts?.limit !== undefined ? "desc" : "asc" },
+      ...(opts?.limit !== undefined ? { take: opts.limit } : {}),
+    }),
     getActiveGoal(),
   ]);
   return rows.map((row) => buildBundle(row, goal));

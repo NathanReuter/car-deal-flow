@@ -7,7 +7,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
+import { assertAllowedUrl, assertSafeOutPath, isCliEntry } from "./fetch-guards";
 import { throttleFetch } from "./lib/harvest-runner";
 import type { NapistaCard } from "./napista-parse";
 
@@ -15,6 +15,12 @@ const CHROME_UA =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
   "AppleWebKit/537.36 (KHTML, like Gecko) " +
   "Chrome/125.0.0.0 Safari/537.36";
+
+// ---------------------------------------------------------------------------
+// Allowed fetch hosts (security guard)
+// ---------------------------------------------------------------------------
+
+const NAPISTA_ALLOWED_HOSTS = new Set(["napista.com.br"]);
 
 /** South-first city slugs (buyer in Santa Catarina). */
 export const NAPISTA_CITY_SLUGS = [
@@ -79,8 +85,10 @@ export async function fetchNapistaPage(
   pageNo: number,
 ): Promise<NapistaCard[]> {
   const url =
-    `https://napista.com.br/busca/carro/${citySlug}/${year}/valor-abaixo-da-fipe` +
+    `https://napista.com.br/busca/carro/${encodeURIComponent(citySlug)}/${year}/valor-abaixo-da-fipe` +
     (pageNo > 1 ? `?pn=${pageNo}` : "");
+
+  assertAllowedUrl(url, NAPISTA_ALLOWED_HOSTS, "napista");
 
   const res = await fetch(url, {
     headers: {

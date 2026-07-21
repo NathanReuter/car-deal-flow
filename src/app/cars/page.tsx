@@ -6,7 +6,12 @@ import { getAllBundles } from "@/lib/aggregate";
 export const dynamic = "force-dynamic";
 
 export default async function CarsPage() {
-  const bundles = await getAllBundles();
+  // P2 stopgap: cap at 500 newest rows so this page survives a 50k-row DB.
+  // Real fix (server-side pagination + virtualised table) is tracked in
+  // docs/ui-cars-view-scaling-plan.md. The other 4 getAllBundles() callers
+  // (page.tsx, shortlist, pipeline, compare) share this cliff and are covered
+  // by that plan — do NOT add a limit there without reading it first.
+  const bundles = await getAllBundles({ limit: 500 });
 
   return (
     <div className="flex flex-col gap-6">

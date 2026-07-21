@@ -171,6 +171,18 @@ describe("writeLead", () => {
     ).rejects.toThrow(/mileageKm/);
   });
 
+  // P1: mileage > 2_000_000 is nulled out (matches the one-time migration behaviour)
+  it("nulls out mileageKm > 2_000_000 (parseKm concatenation artifact)", async () => {
+    const result = await writeLead(ctx.prisma, {
+      ...baseInput,
+      sourceUrl: "https://vitrinebradesco.com.br/lot/big-mileage",
+      mileageKm: 3_000_000,
+    });
+    expect(result.created).toBe(true);
+    const car = await ctx.prisma.car.findUnique({ where: { id: result.carId } });
+    expect(car!.mileageKm).toBeNull();
+  });
+
   it("rejects non-http source URLs", async () => {
     await expect(
       writeLead(ctx.prisma, { ...baseInput, sourceUrl: "javascript:alert(1)" }),

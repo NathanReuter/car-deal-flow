@@ -430,12 +430,19 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     requireHttpUrl(input.editalUrl.trim(), "editalUrl");
   }
 
-  const mileageKm = input.mileageKm === undefined ? null : input.mileageKm;
+  let mileageKm = input.mileageKm === undefined ? null : input.mileageKm;
   if (mileageKm !== null && !Number.isFinite(mileageKm)) {
     throw new WriteLeadError("Invalid mileageKm: must be a finite number or null");
   }
   if (mileageKm !== null && mileageKm < 0) {
     throw new WriteLeadError("Invalid mileageKm: must be >= 0");
+  }
+  // P1: null-out mileage values that exceed the physical plausibility ceiling.
+  // Values > 2_000_000 km were produced by a prior parseKm bug that concatenated
+  // year/engine digits into the reading. Any surviving rows are cleaned by
+  // migration 20260721000000_sanitize_mileage_bounds; new rows are rejected here.
+  if (mileageKm !== null && mileageKm > 2_000_000) {
+    mileageKm = null;
   }
 
   const trim = input.trim?.trim() ?? "";
@@ -479,14 +486,6 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
 
   const editalUrl = input.editalUrl?.trim() || null;
   const auctionDate = input.auctionDate === undefined ? null : input.auctionDate;
-
-  // Prior parseKm bugs concatenated year/engine digits into mileageKm values that
-  // exceed JS safe integers — Prisma then cannot deserialize those rows at all.
-  await prisma.$executeRaw`
-    UPDATE Car
-    SET mileageKm = NULL
-    WHERE mileageKm > 2000000 OR mileageKm < 0
-  `;
 
   const existingByUrl = await prisma.car.findUnique({ where: { sourceUrl } });
 

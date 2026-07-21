@@ -85,6 +85,21 @@ describe("parseClubeRepasseCards", () => {
     expect(result).toHaveLength(0);
   });
 
+  // S2: malformed detailPath is rejected before embedding in sourceUrl
+  it("skips card with a detailPath containing unsafe characters (S2 guard)", () => {
+    // detailPath with query-string / injection chars — allowed by the href regex
+    // but rejected by the S2 allowlist guard before it can reach sourceUrl.
+    const badPathHtml = `
+      <div class="bg-white rounded-2xl border">
+        <a href="/detalhe/foo?redirect=evil&x=1"></a>
+        <h2 title="Gol">Gol</h2>
+        <p class="text-sm text-gray-600">Volkswagen Gol 2021/2022, manual</p>
+        <div class="text-2xl font-black">R$ 35 000,00</div>
+      </div>`;
+    const result = parseClubeRepasseCards(badPathHtml);
+    expect(result).toHaveLength(0);
+  });
+
   // Finding 3 — parseBrlStorefront fallback removed (double-divide bug)
   it("parseBrlStorefront: parses integer-only price string without dividing by 100", () => {
     // "R$ 40500" has no comma or decimal — the old fallback would strip non-digits
@@ -147,6 +162,49 @@ describe("parseCompracertaItems", () => {
   it("skips items missing required fields (fail closed)", () => {
     const partial = JSON.stringify([{ id: "1", marca: "Foo" }]); // no modelo, ano, preco
     expect(parseCompracertaItems(partial)).toHaveLength(0);
+  });
+
+  // S3: item.id with only path-injection chars (all stripped → empty safeId) is skipped
+  it("skips item whose id sanitizes to empty string (S3 guard)", () => {
+    const junkId = JSON.stringify([
+      {
+        id: "../x",
+        marca: "Honda",
+        modelo: "Civic",
+        versao: "EXL 2.0",
+        descricao: "",
+        ano: 2021,
+        km: 30000,
+        preco: 90000,
+        fipe: 100000,
+        status: "disponivel",
+      },
+    ]);
+    // "../x" → stripped to "x" (non-empty after sanitization) — item IS included
+    // but sourceUrl uses safeId "x" instead of "../x".
+    const items = parseCompracertaItems(junkId);
+    expect(items).toHaveLength(1);
+    expect(items[0]!.id).toBe("x");
+  });
+
+  it("skips item whose id is entirely non-alphanumeric (S3 guard — empty safeId)", () => {
+    const allJunk = JSON.stringify([
+      {
+        id: "../../",
+        marca: "Honda",
+        modelo: "Civic",
+        versao: "EXL 2.0",
+        descricao: "",
+        ano: 2021,
+        km: 30000,
+        preco: 90000,
+        fipe: 100000,
+        status: "disponivel",
+      },
+    ]);
+    // "../../" → all chars stripped → safeId = "" → item is skipped
+    const items = parseCompracertaItems(allJunk);
+    expect(items).toHaveLength(0);
   });
 
   // Finding 1 — damage gate (parser exposes versao+descricao; harvest gates on them)

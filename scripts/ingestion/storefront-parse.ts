@@ -55,6 +55,9 @@ export function parseClubeRepasseCards(html: string): ClubeRepasseCard[] {
     const detailMatch = section.match(/<a\s+href="(\/detalhe\/[^"]+)"/);
     if (!detailMatch) continue;
     const detailPath = detailMatch[1]!;
+    // S2: validate detailPath before embedding in sourceUrl — skip cards with
+    // paths that contain characters outside the safe set (path traversal guard).
+    if (!/^\/detalhe\/[a-zA-Z0-9_\-./]+$/.test(detailPath)) continue;
 
     // --- Below-FIPE badge ---
     let belowFipePct: number | undefined;
@@ -444,7 +447,11 @@ export function parseCompracertaItems(raw: string): CompracertaItem[] {
     if (year < 1980 || year > 2030) continue;
     if (preco <= 0) continue;
 
-    const id = String(entry.id ?? "");
+    // S3: sanitize item.id before embedding in sourceUrl — reject entries with
+    // ids that contain characters outside the safe set (path injection guard).
+    const safeId = String(entry.id ?? "").replace(/[^a-zA-Z0-9_\-]/g, "");
+    if (!safeId) continue;
+    const id = safeId;
     const fipeBRL = typeof entry.fipe === "number" && entry.fipe > 0 ? entry.fipe : undefined;
     const belowFipePct =
       fipeBRL !== undefined ? (1 - preco / fipeBRL) * 100 : undefined;

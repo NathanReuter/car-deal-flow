@@ -17,7 +17,7 @@ import {
   isCliEntry,
 } from "./fetch-guards";
 import { webmotorsToWriteLead, type WebmotorsSearchResult } from "./webmotors-parse";
-import { WM_HOMEPAGE, WM_QUERIES, WM_API_BASE } from "./webmotors-list";
+import { fetchApiPage, WM_HOMEPAGE, WM_QUERIES, WM_API_BASE } from "./webmotors-list";
 import {
   bumpSkip,
   createHarvestSummary,
@@ -29,44 +29,8 @@ import {
   writeSummary,
   type HarvestSummary,
 } from "./lib/harvest-runner";
-import type { Page } from "playwright";
 
 chromium.use(stealth());
-
-// ─── Internal API fetcher ────────────────────────────────────────────────────
-
-interface WmApiResponse {
-  SearchResults?: WebmotorsSearchResult[];
-}
-
-async function fetchApiPage(
-  page: Page,
-  keyword: string,
-  pageNo: number,
-): Promise<WebmotorsSearchResult[]> {
-  const params = new URLSearchParams({
-    tipovendedor: "PF",
-    tipoveiculo: "carros",
-    q: keyword.replace(/\+/g, " "),
-    pagina: String(pageNo),
-    quantidade: "24",
-    ordem: "1",
-  });
-  const url = `${WM_API_BASE}?${params.toString()}`;
-
-  const results = await page.evaluate(async (apiUrl: string) => {
-    const resp = await fetch(apiUrl, {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    });
-    if (!resp.ok) return null;
-    return resp.json() as Promise<unknown>;
-  }, url);
-
-  if (!results || typeof results !== "object") return [];
-  const body = results as WmApiResponse;
-  return body.SearchResults ?? [];
-}
 
 // ─── Core harvest function ───────────────────────────────────────────────────
 

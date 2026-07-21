@@ -137,25 +137,37 @@ export function classifyWmApiResponse(raw: {
   return { kind: "empty" };
 }
 
-async function fetchApiPage(
+/**
+ * Fetch one API page inside the warmed-up browser context. Returns the raw
+ * results array, or throws {@link WebmotorsBlockError} if the response is an
+ * anti-bot block (so callers can fail closed instead of mistaking it for
+ * end-of-results). A genuine empty page returns `[]`.
+ */
+export async function fetchApiPage(
   page: Page,
   keyword: string,
   pageNo: number,
 ): Promise<WebmotorsSearchResult[]> {
   const url = buildApiUrl(keyword, pageNo);
 
-  const results = await page.evaluate(async (apiUrl: string) => {
+  const raw = await page.evaluate(async (apiUrl: string) => {
     const resp = await fetch(apiUrl, {
-      headers: { "Accept": "application/json" },
+      headers: { Accept: "application/json" },
       credentials: "include",
     });
-    if (!resp.ok) return null;
-    return resp.json() as Promise<unknown>;
+    return {
+      ok: resp.ok,
+      status: resp.status,
+      contentType: resp.headers.get("content-type") ?? "",
+      body: await resp.text(),
+    };
   }, url);
 
-  if (!results || typeof results !== "object") return [];
-  const body = results as WmApiResponse;
-  return body.SearchResults ?? [];
+  const outcome = classifyWmApiResponse(raw);
+  if (outcome.kind === "blocked") {
+    throw new WebmotorsBlockError(`${outcome.reason} for ${url}`);
+  }
+  return outcome.kind === "ok" ? outcome.results : [];
 }
 
 function resultToCard(r: WebmotorsSearchResult): WmListCard {

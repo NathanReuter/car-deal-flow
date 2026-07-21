@@ -1,8 +1,21 @@
 import { describe, it, expect } from "vitest";
+import type { Page } from "playwright";
 import {
   classifyWmApiResponse,
+  fetchApiPage,
   WebmotorsBlockError,
 } from "../webmotors-list";
+
+/** Minimal fake Page whose evaluate() returns canned raw API materials,
+ * bypassing the real browser fetch. */
+function fakePage(raw: {
+  ok: boolean;
+  status: number;
+  contentType: string;
+  body: string;
+}): Page {
+  return { evaluate: async () => raw } as unknown as Page;
+}
 
 function ok(body: string, contentType = "application/json") {
   return { ok: true, status: 200, contentType, body };
@@ -74,6 +87,42 @@ describe("classifyWmApiResponse", () => {
   it("returns blocked when JSON parses to a non-object (unexpected shape)", () => {
     const outcome = classifyWmApiResponse(ok("42"));
     expect(outcome.kind).toBe("blocked");
+  });
+});
+
+describe("fetchApiPage", () => {
+  it("returns the results array when the response is ok", async () => {
+    const page = fakePage({
+      ok: true,
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ SearchResults: [{ UniqueId: 1 }] }),
+    });
+    const results = await fetchApiPage(page, "repasse", 1);
+    expect(results).toHaveLength(1);
+  });
+
+  it("returns an empty array on a genuine empty page", async () => {
+    const page = fakePage({
+      ok: true,
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ SearchResults: [] }),
+    });
+    const results = await fetchApiPage(page, "repasse", 9);
+    expect(results).toEqual([]);
+  });
+
+  it("throws WebmotorsBlockError on a blocked response", async () => {
+    const page = fakePage({
+      ok: false,
+      status: 403,
+      contentType: "text/html",
+      body: "Access to this page has been denied",
+    });
+    await expect(fetchApiPage(page, "repasse", 2)).rejects.toBeInstanceOf(
+      WebmotorsBlockError,
+    );
   });
 });
 

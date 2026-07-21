@@ -3,6 +3,7 @@ import type { Page } from "playwright";
 import {
   classifyWmApiResponse,
   fetchApiPage,
+  listWebmotorsAds,
   WebmotorsBlockError,
 } from "../webmotors-list";
 
@@ -123,6 +124,20 @@ describe("fetchApiPage", () => {
     await expect(fetchApiPage(page, "repasse", 2)).rejects.toBeInstanceOf(
       WebmotorsBlockError,
     );
+  });
+});
+
+describe("listWebmotorsAds — fail-closed", () => {
+  it("propagates WebmotorsBlockError instead of returning a truncated list", async () => {
+    const page = fakePage({
+      ok: false,
+      status: 403,
+      contentType: "text/html",
+      body: "Access to this page has been denied",
+    });
+    await expect(
+      listWebmotorsAds({ queries: ["repasse"], maxPagesPerQuery: 3, page }),
+    ).rejects.toBeInstanceOf(WebmotorsBlockError);
   });
 });
 

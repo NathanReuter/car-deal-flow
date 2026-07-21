@@ -18,11 +18,12 @@ import {
 } from "./fetch-guards";
 import { webmotorsToWriteLead, type WebmotorsSearchResult } from "./webmotors-parse";
 import {
+  buildApiUrl,
   fetchApiPage,
   WebmotorsBlockError,
+  WM_API_BASE,
   WM_HOMEPAGE,
   WM_QUERIES,
-  WM_API_BASE,
 } from "./webmotors-list";
 import type { Page } from "playwright";
 import {
@@ -72,10 +73,15 @@ export async function harvestWebmotors(options: {
   const usingDefaultQueries =
     queries.length === WM_QUERIES.length && queries.every((q, i) => q === WM_QUERIES[i]);
 
-  // Total raw results the API returned across the whole run — the basis for the
-  // plausibility guard below. A completed run that saw nothing is almost always
-  // a silent anti-bot block, not a genuinely empty market.
+  // Plausibility signals for the guard below. A completed run that saw nothing
+  // is almost always a silent anti-bot block, not a genuinely empty market; a
+  // run where only some default queries came back empty smells like a partial
+  // block. All three default queries (repasse / assumo financiamento /
+  // financiado) reliably return listings on a healthy session.
   let rawResultsTotal = 0;
+  let queriesAttempted = 0;
+  let queriesWithResults = 0;
+  let stoppedEarly = false; // limit/ceiling reached — plausibility not meaningful
 
   const ownBrowser = !options.page;
   const browser = ownBrowser ? await chromium.launch({ headless: true }) : null;
@@ -92,8 +98,10 @@ export async function harvestWebmotors(options: {
     const seen = new Set<string>();
 
     outer: for (const keyword of queries) {
+      queriesAttempted++;
+      let rawThisKeyword = 0;
       for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
-        const pageUrl = `${WM_API_BASE}?q=${keyword}&pagina=${pageNo}`;
+        const pageUrl = buildApiUrl(keyword, pageNo);
         let results: WebmotorsSearchResult[];
         try {
           results = await fetchApiPage(page, keyword, pageNo);
@@ -114,6 +122,7 @@ export async function harvestWebmotors(options: {
         }
 
         rawResultsTotal += results.length;
+        rawThisKeyword += results.length;
         if (results.length === 0) break;
 
         for (const r of results) {
@@ -130,11 +139,13 @@ export async function harvestWebmotors(options: {
 
           if (options.limit !== undefined && summary.scanned > options.limit) {
             bumpSkip(summary, "limit");
+            stoppedEarly = true;
             break outer;
           }
 
           if (hasReachedCeiling(summary, ceiling)) {
             bumpSkip(summary, "ceiling");
+            stoppedEarly = true;
             break outer;
           }
 
@@ -156,26 +167,33 @@ export async function harvestWebmotors(options: {
 
         await throttleFetch();
       }
+      if (rawThisKeyword > 0) queriesWithResults++;
     }
   } finally {
     if (browser) await browser.close();
   }
 
   // Plausibility guard (issue #8): the mid-run block above catches a session
-  // that degrades partway through. This catches one that never worked — a
-  // completed default run that scanned zero raw results is almost certainly a
-  // block at warm-up, not an empty market. Skipped for custom query sets,
-  // which may legitimately return nothing.
-  if (usingDefaultQueries && rawResultsTotal === 0) {
-    const reason = `no results across ${queries.length} default queries — probable silent block`;
-    recordBlock(summary, WM_API_BASE, reason, options.summaryOut);
-    throw new WebmotorsBlockError(reason);
-  }
-  if (rawResultsTotal > 0 && rawResultsTotal < queries.length) {
-    bumpSkip(summary, "low_yield");
-    console.error(
-      `[webmotors] low yield: ${rawResultsTotal} raw result(s) across ${queries.length} queries — possible partial block`,
-    );
+  // that degrades partway through with a hard block signal. These heuristics
+  // catch the softer cases, and only for the default query set (custom queries
+  // may legitimately return little or nothing). Skipped when we stopped early
+  // on limit/ceiling, since a truncated run tells us nothing about yield.
+  if (usingDefaultQueries && !stoppedEarly) {
+    if (rawResultsTotal === 0) {
+      // Nothing at all came back — almost certainly a block at warm-up.
+      const reason = `no results across ${queriesAttempted} default queries — probable silent block`;
+      recordBlock(summary, WM_API_BASE, reason, options.summaryOut);
+      throw new WebmotorsBlockError(reason);
+    }
+    if (queriesWithResults < queriesAttempted) {
+      // Some default queries returned listings and others returned none — a
+      // healthy session returns results for all three, so this smells like a
+      // partial block. Non-fatal: flag for review rather than abort.
+      bumpSkip(summary, "low_yield");
+      console.error(
+        `[webmotors] low yield: only ${queriesWithResults}/${queriesAttempted} default queries returned results — possible partial block`,
+      );
+    }
   }
 
   if (options.summaryOut) writeSummary(options.summaryOut, summary);

@@ -93,17 +93,24 @@ describe("harvestWebmotors — anti-bot fail-closed", () => {
     expect(summary.skipped.blocked ?? 0).toBe(0);
   });
 
-  it("flags low_yield (without aborting) when yield is suspiciously low", async () => {
-    // Default 3 queries; only the first returns a single result, rest empty.
+  it("flags low_yield (without aborting) when some default queries return nothing", async () => {
+    // Default 3 queries; only the first returns results, the rest come back
+    // empty — a healthy session yields on all three, so this smells partial.
     const page = scriptedPage([OK_PAGE([mkResult(7)]), EMPTY_PAGE]);
     const summary = await harvestWebmotors({ dryRun: true, page });
     expect(summary.skipped.low_yield).toBe(1);
     expect(summary.skipped.blocked ?? 0).toBe(0);
   });
 
-  it("completes normally on a genuine empty page (end-of-results, no block)", async () => {
-    // Healthy yield: each of the 3 default queries returns a full page then empties.
-    const page = scriptedPage([OK_PAGE(Array.from({ length: 24 }, (_, i) => mkResult(i))), EMPTY_PAGE]);
+  it("completes normally when every default query yields, then empties (end-of-results, no block)", async () => {
+    // Healthy yield: each of the 3 default queries returns a full page then an
+    // empty page (which ends that query's pagination). No block, no low_yield.
+    const fullPage = OK_PAGE(Array.from({ length: 24 }, (_, i) => mkResult(i)));
+    const page = scriptedPage([
+      fullPage, EMPTY_PAGE, // query 1
+      fullPage, EMPTY_PAGE, // query 2
+      fullPage, EMPTY_PAGE, // query 3
+    ]);
     const summary = await harvestWebmotors({ dryRun: true, page });
     expect(summary.skipped.blocked ?? 0).toBe(0);
     expect(summary.skipped.low_yield ?? 0).toBe(0);

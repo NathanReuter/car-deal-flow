@@ -53,7 +53,7 @@ export interface WmListResult {
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 
-function buildApiUrl(keyword: string, page: number): string {
+export function buildApiUrl(keyword: string, page: number): string {
   const params = new URLSearchParams({
     tipovendedor: "PF",
     tipoveiculo: "carros",
@@ -206,6 +206,10 @@ export async function listWebmotorsAds(options: {
 
   for (const keyword of queries) {
     for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+      // fetchApiPage throws WebmotorsBlockError on an anti-bot block. We let it
+      // propagate to the CLI (which exits non-zero) on purpose: fail closed
+      // rather than swallow a block and emit a truncated list (issue #8). Do
+      // NOT wrap this in a try/catch that returns partial results.
       const results = await fetchApiPage(options.page, keyword, pageNo);
       if (results.length === 0) break;
 

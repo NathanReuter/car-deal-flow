@@ -1,5 +1,6 @@
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "../../src/generated/prisma/client";
+import { requireDatabaseUrl } from "../lib/database-url";
 import type {
   BodyType,
   ConditionField,
@@ -854,7 +855,7 @@ function parseArgs(argv: string[]): WriteLeadInput {
 
 async function main() {
   const input = parseArgs(process.argv.slice(2));
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
+  const adapter = new PrismaBetterSqlite3({ url: requireDatabaseUrl() });
   const prisma = new PrismaClient({ adapter });
   try {
     const result = await writeLead(prisma, input);

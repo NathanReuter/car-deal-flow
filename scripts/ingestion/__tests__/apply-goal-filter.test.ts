@@ -108,7 +108,7 @@ describe("applyGoalFilter", () => {
       sourceUrl: "https://example.com/argo",
       sourcePlatform: "VIP Leilões",
       sellerType: "auction",
-      bodyType: "suv",
+      bodyType: "hatch",
       mileageKm: null,
     });
 
@@ -117,6 +117,28 @@ describe("applyGoalFilter", () => {
     const car = await ctx.prisma.car.findUnique({ where: { id: lead.carId } });
     expect(car!.pipelineStage).toBe("parked");
     expect(car!.stageReason).toBeTruthy();
+  });
+
+  it("hard-rejects a car whose body type is outside preferredBodyTypes (not parked)", async () => {
+    await seedGoal(ctx.prisma, { preferredBodyTypes: ["suv"] });
+    const lead = await writeLead(ctx.prisma, {
+      brand: "Chevrolet",
+      model: "Onix",
+      year: 2023,
+      askingPriceBRL: 75000,
+      sourceUrl: "https://example.com/onix",
+      sourcePlatform: "VIP Leilões",
+      sellerType: "auction",
+      bodyType: "hatch",
+      mileageKm: 20000,
+    });
+
+    const summary = await applyGoalFilter(ctx.prisma);
+    expect(summary.rejected).toBe(1);
+    expect(summary.parked).toBe(0);
+    const car = await ctx.prisma.car.findUnique({ where: { id: lead.carId } });
+    expect(car!.pipelineStage).toBe("rejected");
+    expect(car!.stageReason).toMatch(/preferred body type/i);
   });
 
   it("keeps strong fits as new_lead and clears stageReason", async () => {

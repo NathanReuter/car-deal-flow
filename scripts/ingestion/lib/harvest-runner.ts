@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { assertSafeOutPath } from "../fetch-guards";
 import type { WriteLeadInput, WriteLeadResult } from "../write-lead";
 
@@ -50,6 +50,7 @@ export function hasReachedCeiling(summary: HarvestSummary, ceiling: number): boo
 
 export function writeSummary(outPath: string, summary: HarvestSummary): void {
   const safePath = assertSafeOutPath(outPath);
+  mkdirSync(dirname(safePath), { recursive: true });
   const payload = {
     ...summary,
     durationMs: summary.durationMs || Date.now() - Date.parse(summary.startedAt),
@@ -132,6 +133,8 @@ function buildWriteLeadArgs(input: WriteLeadInput): string[] {
   if (input.notes) args.push("--notes", input.notes);
   if (input.editalUrl) args.push("--edital-url", input.editalUrl);
   if (input.forceDamaged) args.push("--force-damaged");
+  if (input.sourceChannel) args.push("--source-channel", input.sourceChannel);
+  if (input.confidence) args.push("--confidence", input.confidence);
 
   return args;
 }

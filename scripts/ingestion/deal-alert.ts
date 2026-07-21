@@ -46,7 +46,7 @@ function notifyMac(report: AlertReport): void {
 
 async function main() {
   const notify = !process.argv.includes("--no-notify");
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
+  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
   const prisma = new PrismaClient({ adapter });
   try {
     const cars = await prisma.car.findMany({

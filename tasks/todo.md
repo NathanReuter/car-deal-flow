@@ -1,84 +1,90 @@
-# Todo: Pre-Repossession (Repasse) Lead Ingestion — Slice 1
+# Todo: Aggressive Ingestion — Wide-Net Repasse/Market Discovery
 
-Spec: `docs/superpowers/specs/2026-07-17-pre-repossession-repasse-ingestion-design.md`
+Spec: `docs/aggressive-ingestion-plan.md`
 Plan: `tasks/plan.md`
-Prior (Tier 1, implemented, human checks pending): `tasks/plan-tier1.md` / `tasks/todo-tier1.md`
+Prior (repasse slice 1, DONE): preserved in git history of these files.
 
-Status: **Phase 0 implemented (2026-07-17)** — awaiting Checkpoint 0 human review
-
----
-
-## Phase 0: Data model + shared repasse libs
-
-- [x] **Task 0.1** Schema + types: `dealPhase`, repasse columns, `sellerType "repasse"`, aggregate mapping, migration + backfill (560 cars → auction)
-- [x] **Task 0.2** `write-lead.ts`: repasse input fields, pricing rule, cross-phase "window closed" merge note
-- [x] **Task 0.3** `lib/repasse-economics.ts`: entrada/saldo/parcela/contact extraction, null-on-ambiguity + tests
-- [x] **Task 0.4** `lib/repasse-urgency.ts`: high/medium/low heuristic + tests
-
-### Checkpoint 0
-- [x] `npm test` (242) + `npx tsc --noEmit` green; migration applied; `/` renders 200
-- [ ] Human review of pricing rule behavior
+Status: **Planned (2026-07-20)** — awaiting Phase 0 start
 
 ---
 
-## Phase 1: Repasso + Repasses — **CANCELLED (both sources dead)**
+## Phase 0: Foundation (serial)
 
-- [x] **Task 1.1** Repasso probe: site dead since Nov 2020 (see `docs/superpowers/specs/2026-07-17-repasso-repasses-probe.md`)
-- [x] ~~**Task 1.2** `repasso-harvest.ts`~~ — dropped
-- [x] **Task 1.3** Repasses probe: app-only landing page; marketplace SPA has expired SSL — dropped
+- [ ] **Task 0.1** Prisma migration: `sourceChannel` + `confidence` columns on `Car`, with backfill UPDATEs (auction → `auction_house`, OLX → `classifieds`, all → `confidence "high"`)
+- [ ] **Task 0.2** Types + write-lead plumbing: `SourceChannel`/`LeadConfidence` in `types.ts`, validated `WriteLeadInput` fields, `defaultChannelForPlatform()`, olx-harvest explicit values
+- [ ] **Task 0.3** `"market"` DealPhase: types, write-lead validation (like auction), `harvest.ts` phase map, UI badge labels
+- [ ] **Task 0.4** UI surfacing: `aggregate.ts` mapping + confidence badge in table/detail (may trail)
 
-### Checkpoint 1 → folded into Checkpoint 2 (OLX proves the phase-1 path)
-
----
-
-## Phase 2: OLX
-
-- [ ] **Task 2.1** OLX probe: access/anti-bot verdict, fixtures (stop-and-report if hard-blocked)
-- [ ] **Task 2.2** `olx-list.ts` + `olx-fetch.ts` (resumable, capped)
-- [ ] **Task 2.3** `olx-parse.ts` + `olx-harvest.ts` (no-signal skip tally)
-
-### Checkpoint 2
-- [ ] Live capped run writes real OLX leads; sane skip tallies
-- [ ] Human review + LGPD spot-check (contact only in `sellerContact`)
+### Checkpoint C1
+- [ ] Full `npx vitest run` green; `npx tsc --noEmit` green
+- [ ] Migration + backfill verified via sqlite GROUP BY
+- [ ] OLX + one auction source `--dry-run` clean (behavior unchanged)
+- [ ] Human review
 
 ---
 
-## Phase 3: Orchestrator + skill
+## Phase 1: OLX expansion
 
-- [ ] **Task 3.1** `harvest.ts`: olx/repasso/repasses sources + `--phase pre|auction|all`; npm scripts; link-check covers phase 1
-- [ ] **Task 3.2** `harvest-repasse` skill doc (thin)
-
-### Checkpoint 3
-- [ ] One command runs phase-1 end-to-end; `npm test` green
+- [ ] **Task 1.1** Probe regional markup → new queries ("transferir financiamento", "veículo já financiado", "quitar e transferir", "aceito repasse") + `OLX_REGION_HOSTS` south-first (sc, pr, rs, sp, rj, mg, pb, pe, ce, rn, www) + max-pages 5→8 + cross-region listId dedupe + `confidence: "medium"`
 
 ---
 
-## Phase 4: Verification gate
+## Phase 2: NaPista harvester (top priority)
 
-- [ ] **Task 4.1** `list-targets.ts --phase pre` + outcome mapping (qualified → researching; no gravame → warning; RENAJUD → urgency high)
-- [ ] **Task 4.2** `sync-risk-checks` skill doc update
+- [ ] **Task 2.1a** Probe (blocking): live 2026 listings, real URL pattern, embedded JSON, robots/Cloudflare; capture fixtures. Dead/gated → stop + report
+- [ ] **Task 2.1b** Build `napista-list.ts` / `napista-parse.ts` / `napista-harvest.ts` (`market`, `dealer`, `aggregator`, `high`); register source + npm script; fixture tests
 
-### Checkpoint 4
-- [ ] One real lead verified through the browser flow; owner review
-
----
-
-## Phase 5: UI
-
-- [ ] **Task 5.1** Table: phase + urgency badges, phase filter
-- [ ] **Task 5.2** Detail: repasse economics block ("não informado" for nulls)
-
-### Checkpoint 5 (Final)
-- [ ] `npm test` + `npx tsc --noEmit` green
-- [ ] `--phase pre` run: ≥20 phase-1 leads written
-- [ ] ≥1 lead verified to `researching`
-- [ ] LGPD spot-check clean; owner sign-off
+### Checkpoint C2
+- [ ] Tests green; human eyeballs 10 dry-run rows (prices vs FIPE, no invented fields)
+- [ ] One real `--limit 20` run reviewed in UI with correct badges
 
 ---
 
-## Notes
+## Phase 3: Webmotors harvester (independent of Phase 2)
 
-- Pricing rule: entrada+saldo when both known; saldo unknown → flag note + needs-research; entrada unknown → reject.
-- Never bypass anti-bot; OLX hard-block → stop and report.
-- Manual one-shot runs only; no cron.
-- Out of scope: Instagram/Apify, paid plate APIs, Webmotors, Motorez/RepassaMais, scheduling, lost-to-auction analytics.
+- [ ] **Task 3.1a** Probe (blocking, 2h timebox): keyword search, anti-bot assessment, `/api/search` XHR; fixtures. Hard-blocked → report + deprioritize
+- [ ] **Task 3.1b** Build `webmotors-list.ts` / `webmotors-parse.ts` (fail-closed repasse gate) / `webmotors-harvest.ts` (`pre_repossession`, `classifieds`, `medium`, `repasse`); register + tests (repasse-positive + repasse-negative cases)
+
+---
+
+## Phase 4: Storefront config harvester (independent)
+
+- [ ] **Task 4.1a** Probe: freshness-check Clube Repasse, CG Veículos, Compra Certa; fixture per live site; drop dead sites
+- [ ] **Task 4.1b** Build `storefront-sites.ts` + `storefront-harvest.ts` (plain fetch, per-site try/catch; `market`, `repasse`, `storefront`, `medium`); register + tests
+
+### Checkpoint C3
+- [ ] Full suite green; every registered source passes `--dry-run --limit 5`
+- [ ] Cadence untouched (new sources NOT yet scheduled)
+- [ ] Human spot-check of one limited real run per source in UI
+
+---
+
+## Phase 5: Cadence, skills, docs — DONE (gate overridden by user)
+
+- [x] **Task 5.1** `cadence-schedule.ts` entries (napista daily; webmotors M/W/F; storefronts Tu/F) + `.claude/skills/harvest-napista|webmotors|storefronts` (commit b06f513, 11/11 tests)
+
+### Checkpoint C4
+- [x] `cadence-schedule.test.ts` + `run-cadence.test.ts` green; cadence dry-run verified (Mon lists napista+webmotors, storefronts absent)
+
+---
+
+## Phase 6: Spikes (FUTURE WORK — blocked on human prerequisites)
+
+- [ ] **Task 6.1** WhatsApp/Telegram listener spike → `docs/spikes/messaging-listener-spike.md` (needs dedicated phone number — human)
+- [ ] **Task 6.2** Facebook Marketplace RapidAPI spike → `docs/spikes/facebook-marketplace-spike.md` (needs RapidAPI key — human)
+
+## Future Work (see tasks/plan.md → Future Work)
+
+- [ ] **FW-2** Cars-view UI scaling — design done in `docs/ui-cars-view-scaling-plan.md`; build deferred
+- [ ] **FW-3** Deferred Minor review findings cleanup pass (NaPista pagination validation, Webmotors dedup, storefront slug/warn, OLX dead const)
+
+---
+
+## Human-provided prerequisites
+
+- [ ] Dedicated phone number for WhatsApp groups (Task 6.1)
+- [ ] RapidAPI account/key (Task 6.2)
+
+## Out of scope (unchanged from prior plan)
+
+Instagram/Apify, paid plate APIs, Repasse Já / Repasses.com.br (dealer-gated — revisit only if registration proves feasible), Sinesp theft checks (Phase-2 risk-check extension via Infosimples, deferred).

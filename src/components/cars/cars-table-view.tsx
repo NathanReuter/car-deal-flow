@@ -9,6 +9,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { VerdictBadge } from "@/components/domain/verdict-badge";
 import { PhaseBadge } from "@/components/domain/phase-badge";
 import { UrgencyBadge } from "@/components/domain/urgency-badge";
+import { ConfidenceBadge } from "@/components/domain/confidence-badge";
 import { formatBRL, formatKm } from "@/lib/format";
 import { DEAL_PHASE_LABEL, PIPELINE_STAGES, SELLER_TYPE_LABEL, VERDICT_LABEL, type DealPhase, type Verdict } from "@/lib/types";
 import { matchesPhase, type PhaseFilter } from "@/lib/repasse-display";
@@ -150,6 +151,7 @@ export function CarsTableView({ bundles }: { bundles: CarBundle[] }) {
                   {b.car.dealPhase === "pre_repossession" && (
                     <UrgencyBadge urgency={b.car.repasse?.urgency} />
                   )}
+                  <ConfidenceBadge confidence={b.car.confidence} />
                 </div>
               </TD>
               <TD className="text-text-secondary">{SELLER_TYPE_LABEL[b.car.sellerType]}</TD>

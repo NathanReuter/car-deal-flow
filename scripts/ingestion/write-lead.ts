@@ -5,11 +5,13 @@ import type {
   ConditionField,
   DealPhase,
   FuelType,
+  LeadConfidence,
   PipelineStage,
   RepasseUrgency,
   RiskCheckItem,
   RiskCheckKey,
   SellerType,
+  SourceChannel,
   Transmission,
 } from "../../src/lib/types";
 import { normalizeChassis, normalizePlate, isMergeablePlate } from "./identity";
@@ -66,6 +68,30 @@ const VALID_BODY_TYPES: BodyType[] = [
   "wagon",
 ];
 
+const VALID_SOURCE_CHANNELS: SourceChannel[] = [
+  "classifieds",
+  "aggregator",
+  "messaging_group",
+  "forum",
+  "storefront",
+  "auction_house",
+];
+
+const VALID_CONFIDENCES: LeadConfidence[] = ["low", "medium", "high"];
+
+const AUCTION_HOUSE_PLATFORMS = new Set([
+  "Bradesco Vitrine",
+  "VIP Leilões",
+  "BIDchain",
+  "MGL",
+  "Santander Retomados",
+]);
+
+/** Returns the default SourceChannel for a given sourcePlatform name. */
+export function defaultChannelForPlatform(platform: string): SourceChannel {
+  return AUCTION_HOUSE_PLATFORMS.has(platform) ? "auction_house" : "classifieds";
+}
+
 const PRICE_SEMANTICS_NOTE = "askingPriceBRL = minimum bid (lance mínimo).";
 
 /** Stages that may be unconditionally reset to new_lead on re-harvest so the goal filter can re-run. */
@@ -110,6 +136,10 @@ export interface WriteLeadInput {
   auctionDate?: Date | null;
   /** Bypass damage/sinistro gate (owner override only). */
   forceDamaged?: boolean;
+  /** Channel through which the lead was sourced. Defaults to defaultChannelForPlatform(sourcePlatform). */
+  sourceChannel?: SourceChannel;
+  /** Confidence in the lead data quality. Defaults to "high". */
+  confidence?: LeadConfidence;
 }
 
 export class WriteLeadError extends Error {}
@@ -164,7 +194,7 @@ function resolvePricing(input: WriteLeadInput): {
   repasseColumns: Partial<RepasseColumns>;
 } {
   const dealPhase = input.dealPhase ?? "auction";
-  if (dealPhase !== "auction" && dealPhase !== "pre_repossession") {
+  if (dealPhase !== "auction" && dealPhase !== "pre_repossession" && dealPhase !== "market") {
     throw new WriteLeadError(`Invalid dealPhase: ${String(dealPhase)}`);
   }
   if (
@@ -174,7 +204,30 @@ function resolvePricing(input: WriteLeadInput): {
     throw new WriteLeadError(`Invalid repasseUrgency: ${String(input.repasseUrgency)}`);
   }
 
-  if (dealPhase !== "pre_repossession") {
+  if (dealPhase === "auction" || dealPhase === "market") {
+    // Repasse economics fields are forbidden for auction and market leads.
+    if (input.entryAskBRL !== undefined && input.entryAskBRL !== null) {
+      throw new WriteLeadError(
+        `${dealPhase} leads must not supply entryAskBRL — repasse fields are forbidden.`,
+      );
+    }
+    if (dealPhase === "market") {
+      if (input.outstandingDebtBRL !== undefined && input.outstandingDebtBRL !== null) {
+        throw new WriteLeadError(
+          "market leads must not supply outstandingDebtBRL — repasse fields are forbidden.",
+        );
+      }
+      if (input.installmentBRL !== undefined && input.installmentBRL !== null) {
+        throw new WriteLeadError(
+          "market leads must not supply installmentBRL — repasse fields are forbidden.",
+        );
+      }
+      if (input.installmentsRemaining !== undefined && input.installmentsRemaining !== null) {
+        throw new WriteLeadError(
+          "market leads must not supply installmentsRemaining — repasse fields are forbidden.",
+        );
+      }
+    }
     return {
       dealPhase,
       askingPriceBRL: requireNumber(input.askingPriceBRL, "askingPriceBRL"),
@@ -362,16 +415,34 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     throw new WriteLeadError(`Invalid or missing bodyType: ${String(bodyType)}`);
   }
 
+  if (input.sourceChannel !== undefined && !VALID_SOURCE_CHANNELS.includes(input.sourceChannel)) {
+    throw new WriteLeadError(`Invalid sourceChannel: ${String(input.sourceChannel)}`);
+  }
+  if (input.confidence !== undefined && !VALID_CONFIDENCES.includes(input.confidence)) {
+    throw new WriteLeadError(`Invalid confidence: ${String(input.confidence)}`);
+  }
+
+  const resolvedSourceChannel: SourceChannel =
+    input.sourceChannel ?? defaultChannelForPlatform(sourcePlatform);
+  const resolvedConfidence: LeadConfidence = input.confidence ?? "high";
+
   if (input.editalUrl !== undefined && input.editalUrl.trim() !== "") {
     requireHttpUrl(input.editalUrl.trim(), "editalUrl");
   }
 
-  const mileageKm = input.mileageKm === undefined ? null : input.mileageKm;
+  let mileageKm = input.mileageKm === undefined ? null : input.mileageKm;
   if (mileageKm !== null && !Number.isFinite(mileageKm)) {
     throw new WriteLeadError("Invalid mileageKm: must be a finite number or null");
   }
   if (mileageKm !== null && mileageKm < 0) {
     throw new WriteLeadError("Invalid mileageKm: must be >= 0");
+  }
+  // P1: null-out mileage values that exceed the physical plausibility ceiling.
+  // Values > 2_000_000 km were produced by a prior parseKm bug that concatenated
+  // year/engine digits into the reading. Any surviving rows are cleaned by
+  // migration 20260721000000_sanitize_mileage_bounds; new rows are rejected here.
+  if (mileageKm !== null && mileageKm > 2_000_000) {
+    mileageKm = null;
   }
 
   const trim = input.trim?.trim() ?? "";
@@ -415,14 +486,6 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
 
   const editalUrl = input.editalUrl?.trim() || null;
   const auctionDate = input.auctionDate === undefined ? null : input.auctionDate;
-
-  // Prior parseKm bugs concatenated year/engine digits into mileageKm values that
-  // exceed JS safe integers — Prisma then cannot deserialize those rows at all.
-  await prisma.$executeRaw`
-    UPDATE Car
-    SET mileageKm = NULL
-    WHERE mileageKm > 2000000 OR mileageKm < 0
-  `;
 
   const existingByUrl = await prisma.car.findUnique({ where: { sourceUrl } });
 
@@ -570,6 +633,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       ...listingFieldsBase,
       sourceUrl,
       sourcePlatform,
+      sourceChannel: resolvedSourceChannel,
+      confidence: resolvedConfidence,
       plate: plateProvided ? plate! : null,
       chassis: chassisProvided ? chassis! : null,
       notes,
@@ -782,12 +847,14 @@ function parseArgs(argv: string[]): WriteLeadInput {
     editalUrl: get("--edital-url"),
     auctionDate,
     forceDamaged: argv.includes("--force-damaged"),
+    sourceChannel: get("--source-channel") as SourceChannel | undefined,
+    confidence: get("--confidence") as LeadConfidence | undefined,
   };
 }
 
 async function main() {
   const input = parseArgs(process.argv.slice(2));
-  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
+  const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
   const prisma = new PrismaClient({ adapter });
   try {
     const result = await writeLead(prisma, input);

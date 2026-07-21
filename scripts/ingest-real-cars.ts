@@ -15,7 +15,7 @@ import { PrismaClient } from "../src/generated/prisma/client";
 import { findFipeValue, FipeError } from "../src/lib/integrations/fipe";
 import type { RiskCheckItem, RiskCheckKey, ConditionField } from "../src/lib/types";
 
-const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" });
+const adapter = new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./prisma/dev.db" });
 const prisma = new PrismaClient({ adapter });
 
 const AUTOMATABLE_AND_MANUAL_KEYS: RiskCheckKey[] = [

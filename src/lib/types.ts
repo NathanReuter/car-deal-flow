@@ -61,11 +61,37 @@ export const SELLER_TYPE_LABEL: Record<SellerType, string> = {
 };
 
 /** Where in the repossession lifecycle the deal sits. */
-export type DealPhase = "pre_repossession" | "auction";
+export type DealPhase = "pre_repossession" | "auction" | "market";
+
+export type SourceChannel =
+  | "classifieds"
+  | "aggregator"
+  | "messaging_group"
+  | "forum"
+  | "storefront"
+  | "auction_house";
+
+export const SOURCE_CHANNEL_LABEL: Record<SourceChannel, string> = {
+  classifieds: "Classificados",
+  aggregator: "Agregador",
+  messaging_group: "Grupo de mensagens",
+  forum: "Fórum",
+  storefront: "Loja de repasse",
+  auction_house: "Leiloeira",
+};
+
+export type LeadConfidence = "low" | "medium" | "high";
+
+export const CONFIDENCE_LABEL: Record<LeadConfidence, string> = {
+  low: "Baixa",
+  medium: "Média",
+  high: "Alta",
+};
 
 export const DEAL_PHASE_LABEL: Record<DealPhase, string> = {
   pre_repossession: "Pré-apreensão",
   auction: "Leilão",
+  market: "Mercado (abaixo da FIPE)",
 };
 
 export type RepasseUrgency = "high" | "medium" | "low";
@@ -144,6 +170,10 @@ export interface Car {
   dealPhase?: DealPhase;
   /** Present only for pre_repossession leads. */
   repasse?: RepasseInfo;
+  /** Where the lead originated (undefined on legacy rows). */
+  sourceChannel?: SourceChannel;
+  /** Harvester confidence in the lead data (undefined on legacy rows). */
+  confidence?: LeadConfidence;
 }
 
 // ---------------------------------------------------------------------------

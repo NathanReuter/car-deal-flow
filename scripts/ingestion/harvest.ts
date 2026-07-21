@@ -11,19 +11,37 @@ import { harvestBidchainLots } from "./bidchain-harvest";
 import { harvestMglLots } from "./mgl-harvest";
 import { harvestSantanderLots } from "./santander-harvest";
 import { harvestOlxAds } from "./olx-harvest";
+import { harvestNapista } from "./napista-harvest";
+import { harvestWebmotors } from "./webmotors-harvest";
+import { harvestStorefronts } from "./storefront-harvest";
 
-export type HarvestSource = "bradesco" | "vip" | "bidchain" | "mgl" | "santander" | "olx";
+export type HarvestSource =
+  | "bradesco"
+  | "vip"
+  | "bidchain"
+  | "mgl"
+  | "santander"
+  | "olx"
+  | "webmotors"
+  | "napista"
+  | "storefronts";
 
-export type HarvestPhase = "pre" | "auction" | "all";
+export type HarvestPhase = "pre" | "auction" | "market" | "all";
 
-/** Sources by deal phase; "olx" harvests pre-repossession repasse ads. */
+/**
+ * Sources by deal phase.
+ * - pre: pre-repossession repasse ads (owner assuming financing) — OLX, Webmotors.
+ * - market: dealer stock sold outright below FIPE — NaPista, repasse storefronts.
+ * - auction: post-repossession lots.
+ */
 export const PHASE_SOURCES: Record<Exclude<HarvestPhase, "all">, HarvestSource[]> = {
   auction: ["bradesco", "vip", "bidchain", "mgl", "santander"],
-  pre: ["olx"],
+  pre: ["olx", "webmotors"],
+  market: ["napista", "storefronts"],
 };
 
 export function sourcesForPhase(phase: HarvestPhase): HarvestSource[] {
-  if (phase === "all") return [...PHASE_SOURCES.auction, ...PHASE_SOURCES.pre];
+  if (phase === "all") return [...PHASE_SOURCES.auction, ...PHASE_SOURCES.pre, ...PHASE_SOURCES.market];
   return [...PHASE_SOURCES[phase]];
 }
 
@@ -54,8 +72,8 @@ export function parseHarvestSource(raw: string): HarvestSource {
 }
 
 export function parseHarvestPhase(raw: string): HarvestPhase {
-  if (raw !== "pre" && raw !== "auction" && raw !== "all") {
-    throw new Error(`Invalid --phase "${raw}". Use one of: pre, auction, all`);
+  if (raw !== "pre" && raw !== "auction" && raw !== "market" && raw !== "all") {
+    throw new Error(`Invalid --phase "${raw}". Use one of: pre, auction, market, all`);
   }
   return raw;
 }
@@ -251,9 +269,58 @@ export async function runHarvestSource(
         ...common,
       });
     }
+    case "webmotors": {
+      // Self-contained: lists via its own Playwright+stealth JSON-API crawl.
+      return harvestWebmotors({
+        summaryOut: "/tmp/webmotors-harvest/write-summary.json",
+        ...common,
+      });
+    }
+    case "napista": {
+      // Self-contained: lists via plain-fetch __NEXT_DATA__ crawl.
+      return harvestNapista({
+        summaryOut: "/tmp/napista-harvest/write-summary.json",
+        ...common,
+      });
+    }
+    case "storefronts": {
+      // Config-driven multi-site harvester; returns one summary per site.
+      const summaries = await harvestStorefronts({
+        dryRun: options.dryRun,
+        limitPages: options.limit,
+        applyGoalFilter: options.applyGoalFilter,
+        summaryOut: "/tmp/storefronts-harvest/write-summary.json",
+      });
+      return mergeSummaries("storefronts", summaries);
+    }
     default:
       throw new Error(`Unknown source: ${source satisfies never}`);
   }
+}
+
+/** Fold per-site summaries (e.g. from the multi-site storefront harvester)
+ * into one summary reported under a single source name. */
+function mergeSummaries(source: string, parts: HarvestSummary[]): HarvestSummary {
+  const merged = createHarvestSummary(source);
+  if (parts.length === 0) return merged;
+  merged.startedAt = parts.reduce(
+    (earliest, p) => (p.startedAt < earliest ? p.startedAt : earliest),
+    parts[0]!.startedAt,
+  );
+  for (const p of parts) {
+    merged.scanned += p.scanned;
+    merged.written.created += p.written.created;
+    merged.written.updated += p.written.updated;
+    merged.written.merged += p.written.merged;
+    merged.durationMs += p.durationMs;
+    for (const [reason, count] of Object.entries(p.skipped)) {
+      merged.skipped[reason] = (merged.skipped[reason] ?? 0) + count;
+    }
+    merged.errors.push(...p.errors);
+    merged.sampleUrls.push(...p.sampleUrls);
+  }
+  merged.sampleUrls = merged.sampleUrls.slice(0, 10);
+  return merged;
 }
 
 function failedSummary(source: HarvestSource, reason: string): FailedHarvestSummary {
@@ -339,7 +406,7 @@ async function main() {
         ? [args.source]
         : [];
   if (sources.length === 0) {
-    throw new Error("Specify --source <name>, --phase <pre|auction|all>, or --all");
+    throw new Error("Specify --source <name>, --phase <pre|auction|market|all>, or --all");
   }
 
   const combined = await runHarvest({

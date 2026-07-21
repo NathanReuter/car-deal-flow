@@ -199,4 +199,45 @@ describe("webmotorsToWriteLead — edge cases", () => {
     expect(skipReason).toBeUndefined();
     expect(input!.entryAskBRL).toBe(20000);
   });
+
+  // B1: saldo devedor disclosed but no entrada → must skip, not double-count
+  it("skips (no_entry_price) when saldo devedor is present but entrada is not stated", () => {
+    // Listing discloses outstanding debt (saldo devedor) but does NOT mention
+    // the entrada amount. The listed price is 34 000 BRL — if used as entrada
+    // and added to the 20 000 debt this would yield askingPriceBRL ≈ 54 000, wrong.
+    const debtNoEntrada = repasseResult({
+      LongComment:
+        "Repasse de financiamento! Saldo devedor R$ 20.000. Quem assumir fica com o carro.",
+      Prices: { Price: 34000, SearchPrice: 34000 },
+    });
+    const { input, skipReason } = webmotorsToWriteLead(debtNoEntrada);
+    expect(input).toBeUndefined();
+    expect(skipReason).toBe("no_entry_price");
+  });
+
+  // B2: PJ seller (dealer) must be skipped per-record
+  it("skips (not_pf) when Seller.SellerType is PJ (dealer)", () => {
+    const pjResult = repasseResult({
+      Seller: { ...baseResult.Seller, SellerType: "PJ" },
+    });
+    const { input, skipReason } = webmotorsToWriteLead(pjResult);
+    expect(input).toBeUndefined();
+    expect(skipReason).toBe("not_pf");
+  });
+
+  it("passes through when Seller.SellerType is PF", () => {
+    const pfResult = repasseResult({
+      Seller: { ...baseResult.Seller, SellerType: "PF" },
+    });
+    const { input } = webmotorsToWriteLead(pfResult);
+    expect(input).toBeDefined();
+  });
+
+  it("passes through when Seller.SellerType is absent (undefined)", () => {
+    const noTypeResult = repasseResult({
+      Seller: { ...baseResult.Seller, SellerType: undefined },
+    });
+    const { input } = webmotorsToWriteLead(noTypeResult);
+    expect(input).toBeDefined();
+  });
 });

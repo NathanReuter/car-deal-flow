@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { detectDamageSignals } from "../../../src/lib/filters/damageSignals";
+import { guessBodyTypeByModel } from "../lib/parse-common";
 import {
   parseClubeRepasseCards,
   parseCompracertaItems,
@@ -98,6 +99,21 @@ describe("parseClubeRepasseCards", () => {
       </div>`;
     const result = parseClubeRepasseCards(badPathHtml);
     expect(result).toHaveLength(0);
+  });
+
+  // N2: integer-only FIPE badge (no decimal) must be matched
+  it("parses integer-only FIPE badge ('15% abaixo FIPE') → belowFipePct = 15", () => {
+    const html = `
+      <div class="bg-white rounded-2xl border">
+        <a href="/detalhe/test-abc"></a>
+        <span>15% abaixo FIPE</span>
+        <h2 title="Gol">Gol</h2>
+        <p class="text-sm text-gray-600">Volkswagen Gol 2020/2021, manual</p>
+        <div class="text-2xl font-black">R$ 35 000,00</div>
+      </div>`;
+    const result = parseClubeRepasseCards(html);
+    expect(result).toHaveLength(1);
+    expect(result[0]!.belowFipePct).toBe(15);
   });
 
   // Finding 3 — parseBrlStorefront fallback removed (double-divide bug)
@@ -276,5 +292,21 @@ describe("parseCompracertaItems", () => {
     const item = items[0]!;
     const blob = [item.descricao, item.versao, item.model].filter(Boolean).join(" ");
     expect(detectDamageSignals(blob).blocked).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F3 — Body type fail-closed: guessBodyTypeByModel returns null for unknown models
+// ---------------------------------------------------------------------------
+describe("guessBodyTypeByModel — fail-closed for storefront harvest", () => {
+  it("returns null for a completely unknown model name", () => {
+    // The harvest skips with no_body_type when this returns null — no invented default.
+    expect(guessBodyTypeByModel("XYZ-UNKNOWN-MODEL")).toBeNull();
+  });
+
+  it("returns a known body type for a recognizable model", () => {
+    // Confirms the happy path still works after removing the ?? 'hatch' fallback.
+    const bodyType = guessBodyTypeByModel("Gol");
+    expect(bodyType).not.toBeNull();
   });
 });

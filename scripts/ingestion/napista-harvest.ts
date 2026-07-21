@@ -4,11 +4,10 @@
 // sourceChannel "aggregator", confidence "high".
 //
 //   ./node_modules/.bin/tsx scripts/ingestion/napista-harvest.ts
-//     [--out /tmp/napista-harvest/list.json]
 //     [--max-pages <n>] [--dry-run] [--limit <n>] [--no-goal-filter]
 //     [--summary-out /tmp/napista-harvest/write-summary.json]
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
@@ -63,7 +62,7 @@ export async function harvestNapista(options: {
 
     if (hasReachedCeiling(summary, ceiling)) {
       bumpSkip(summary, "ceiling");
-      continue;
+      break;
     }
 
     if (options.dryRun) {

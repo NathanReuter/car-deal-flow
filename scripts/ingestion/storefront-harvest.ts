@@ -120,10 +120,14 @@ async function harvestHtmlSite(
 
       if (hasReachedCeiling(summary, ceiling)) {
         bumpSkip(summary, "ceiling");
-        continue;
+        break;
       }
 
-      const bodyType = guessBodyTypeByModel(card.model) ?? "hatch";
+      const bodyType = guessBodyTypeByModel(card.model);
+      if (!bodyType) {
+        bumpSkip(summary, "no_body_type");
+        continue;
+      }
       const input: WriteLeadInput = {
         brand: card.brand,
         model: card.model,
@@ -193,10 +197,14 @@ async function harvestJsonSite(
 
     if (hasReachedCeiling(summary, ceiling)) {
       bumpSkip(summary, "ceiling");
-      continue;
+      break;
     }
 
-    const bodyType = guessBodyTypeByModel(item.model) ?? "sedan";
+    const bodyType = guessBodyTypeByModel(item.model);
+    if (!bodyType) {
+      bumpSkip(summary, "no_body_type");
+      continue;
+    }
     const input: WriteLeadInput = {
       brand: item.brand,
       model: item.model,
@@ -208,10 +216,10 @@ async function harvestJsonSite(
       confidence: "medium",
       bodyType,
       mileageKm: item.mileageKm,
-      // Deep-link pattern confirmed 2026-07-20: /veiculo/<marca>-<modelo>-<ano>-<id>
-      // (slug-case, lowercase, spaces replaced by hyphens). The JSON has no
-      // explicit url field; this slug is constructed from available fields.
-      sourceUrl: `${site.baseUrl}/veiculo/${item.brand.toLowerCase().replace(/\s+/g, "-")}-${item.model.toLowerCase().replace(/\s+/g, "-")}-${item.year}-${item.id}`,
+      // Dedupe key: id-only path. The brand/model/year slug was previously
+      // included but drifts if the site renames fields → re-inserts existing
+      // cars. safeId is already sanitized in parseCompracertaItems (S3 guard).
+      sourceUrl: `${site.baseUrl}/veiculo/${item.id}`,
       sourcePlatform: site.sourcePlatform,
       city: site.city,
       state: site.state,

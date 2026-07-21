@@ -178,6 +178,13 @@ export function webmotorsToWriteLead(r: WebmotorsSearchResult): WebmotorsToWrite
   const parsed = parseWebmotorsResult(r);
   const blob = `${parsed.brand} ${parsed.model} ${parsed.version ?? ""}\n${parsed.longComment}`;
 
+  // Per-record PF seller gate: skip any result whose SellerType is present and
+  // not "PF" (e.g. "PJ" = dealer). The tipovendedor=PF query param is the primary
+  // filter, but this per-result check makes the PF intent explicit and verifiable.
+  if (r.Seller.SellerType && r.Seller.SellerType !== "PF") {
+    return { skipReason: "not_pf" };
+  }
+
   // Fail-closed financing-signal gate.
   if (!hasFinancingSignal(blob)) return { skipReason: "no_financing_signal" };
 
@@ -202,7 +209,12 @@ export function webmotorsToWriteLead(r: WebmotorsSearchResult): WebmotorsToWrite
 
   // Repasse economics.
   const economics = extractRepasseEconomics(parsed.longComment);
-  const entryAskBRL = economics.entryAskBRL ?? parsed.priceBRL;
+  // Fall back to the listed price as entryAskBRL ONLY when no saldo devedor was
+  // disclosed. If debt IS disclosed but entrada was not stated, we cannot safely
+  // reconstruct asking price (entry + debt would double-count the listed price).
+  const entryAskBRL =
+    economics.entryAskBRL ??
+    (economics.outstandingDebtBRL === null ? parsed.priceBRL : null);
   if (entryAskBRL === null || entryAskBRL === 0) return { skipReason: "no_entry_price" };
 
   const urgency = computeRepasseUrgency({ adText: blob });

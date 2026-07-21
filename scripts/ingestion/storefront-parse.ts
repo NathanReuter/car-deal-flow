@@ -62,7 +62,7 @@ export function parseClubeRepasseCards(html: string): ClubeRepasseCard[] {
     // --- Below-FIPE badge ---
     let belowFipePct: number | undefined;
     const fipeBadgeMatch = section.match(
-      /(\d{1,2}[.,]\d{1,2})%\s+abaixo\s+FIPE/i,
+      /(\d{1,2}(?:[.,]\d{1,2})?)%\s+abaixo\s+FIPE/i,
     );
     if (fipeBadgeMatch) {
       const pctStr = fipeBadgeMatch[1]!.replace(",", ".");

@@ -22,8 +22,11 @@ Platform: `Webmotors`, `sellerType: repasse`, `dealPhase: pre_repossession`.
 
 - Strategy: Playwright + stealth plugin intercepting the internal JSON search
   API (`tipovendedor=PF` filter restricts to private sellers only).
-- Repasse-only gate: **fail-closed** — if the PF filter cannot be confirmed
-  active, the run aborts rather than ingesting dealer stock as repasse leads.
+- PF protection (three layers): (1) `tipovendedor=PF` query param on every API
+  call; (2) per-result `Seller.SellerType` check — any result whose SellerType
+  is present and !== "PF" is skipped with reason `not_pf` rather than ingested;
+  (3) `hasFinancingSignal` text gate rejects plain-sale ads without a
+  financing-transfer phrase. Dealer stock cannot pass all three layers.
 - Stealth may degrade over time as Webmotors tightens bot detection. Upgrade
   path: switch the stealth plugin to **Camoufox** if detection rates increase.
 

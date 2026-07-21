@@ -24,7 +24,8 @@ Platform: `NaPista`, `sellerType: market`, `dealPhase: market`.
 - Pagination: `?pn=N` query parameter. The pagination depth should be validated
   on the **first full production run** — confirm maximum page number before
   assuming the current limit is correct.
-- City priority: south-first (SP, Curitiba, Porto Alegre, BH) to maximise
+- City priority: south-first (Florianópolis, Joinville, Blumenau, Curitiba,
+  Porto Alegre, São Paulo, Rio de Janeiro, Belo Horizonte) to maximise
   geographic density of actionable leads.
 - Year gate: `year >= 2021` (aligned with the 2021+ goal filter).
 

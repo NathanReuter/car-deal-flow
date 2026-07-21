@@ -34,8 +34,11 @@ export const NAPISTA_CITY_SLUGS = [
   "belo-horizonte",
 ];
 
-/** Model years to search: 2021..current year. */
-export const NAPISTA_YEARS = [2021, 2022, 2023, 2024, 2025, 2026];
+/** Model years to search: 2021..current year (derived at runtime). */
+export const NAPISTA_YEARS = Array.from(
+  { length: new Date().getFullYear() - 2021 + 1 },
+  (_, i) => 2021 + i,
+);
 
 export const NAPISTA_PAGE_SIZE = 48;
 export const DEFAULT_MAX_PAGES = 10;

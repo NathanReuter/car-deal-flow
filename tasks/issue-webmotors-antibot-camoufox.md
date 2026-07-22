@@ -41,7 +41,48 @@ Tasks 1–3 are sequential (each wiring depends on the confirmed API shape).
 Task 4 has no dependency on Camoufox and can be done in parallel/either
 order.
 
-## Tasks
+## Task 1 outcome (2026-07-22) — SPIKE FAILED, stopped per Checkpoint A
+
+Ran the spike against live Webmotors. Findings:
+
+1. **API shape confirmed:** `Camoufox({ headless: true })` (no `user_data_dir`)
+   returns a Playwright `Browser` — same shape as today's
+   `chromium.launch()`, needs `.newPage()`. Matches the spec's assumption.
+2. **Blocking incompatibility:** `camoufox-js@0.11.2`'s bundled Camoufox
+   browser build uses a Juggler protocol that predates Playwright 1.61's
+   `isMobile` viewport field. With this repo's pinned `playwright@^1.61.1`,
+   `browser.newPage()` throws `Protocol error (Browser.setDefaultViewport):
+   ... isMobile ... not described in this scheme` on every launch — 100%
+   reproducible, matches a known open upstream issue
+   (`daijro/camoufox#653`, unresolved as of 2026-07-22). The only known
+   workaround is downgrading `playwright`/`playwright-core` to `1.60.0`
+   project-wide — out of scope for this task (affects all 10+ other
+   harvesters using Chromium+Playwright; a shared-dependency downgrade needs
+   its own decision, not a spike-time workaround).
+3. **Tested the 1.60.0 workaround anyway (transiently, not committed) to
+   see if Camoufox is even worth pursuing further:** launch succeeded, but
+   the actual result was **worse than the current setup**, not better:
+   - Zero cookies were set on the browser context after visiting
+     `WM_HOMEPAGE` (8s wait, `networkidle`) — the PerimeterX sensor never
+     appears to have completed a session handshake under Camoufox/Firefox
+     the way it does under Chromium+stealth today.
+   - The very first API request (`page 1`, `q=repasse`) was blocked
+     (`HTTP 403`, PerimeterX JSON block payload with `blockScript`/`captcha.js`).
+     Today's Chromium+stealth setup gets **6 clean pages** before blocking
+     at page 7 — Camoufox blocked immediately, on request #1.
+
+This contradicts the design's core hypothesis (better fingerprint quality →
+fewer blocks). Per this plan's own Checkpoint A rule, stopping here instead
+of guessing further mitigations (alternate wait strategies, `humanize`
+options, `headless: false`, etc.) — that would turn a bounded spike into
+open-ended exploration. All experimental changes (package.json,
+package-lock.json, spike script) were reverted; repo is back to a clean
+state matching `main`.
+
+**Tasks 2–5 below are now blocked pending a decision** on how to proceed —
+see the follow-up options presented to the user.
+
+## Tasks (as originally planned — see outcome above before resuming)
 
 ### Task 1 — Spike: confirm camoufox-js launch API (foundation)
 

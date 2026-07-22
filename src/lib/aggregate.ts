@@ -29,7 +29,12 @@ import type {
   CarSource as DbCarSource,
   Prisma,
 } from "@/generated/prisma/client";
+import { Prisma as PrismaRuntime } from "@/generated/prisma/client";
 import { displaySources } from "@/lib/sources";
+
+// Pipeline stages hidden from the listing by default (both the main query and
+// the belowFipePctMin raw-SQL path below must stay in sync with this list).
+const DEFAULT_HIDDEN_STAGES = ["expired", "rejected"] as const;
 
 export interface CarBundle {
   car: Car;
@@ -254,7 +259,7 @@ export async function getBundlesPage(
 
   // Default: hide expired and rejected unless stage is explicitly chosen
   if (!params.stage) {
-    where.pipelineStage = { notIn: ["expired", "rejected"] };
+    where.pipelineStage = { notIn: [...DEFAULT_HIDDEN_STAGES] };
   } else {
     where.pipelineStage = params.stage;
   }
@@ -305,7 +310,7 @@ export async function getBundlesPage(
         WHERE fipeValueBRL IS NOT NULL
           AND fipeValueBRL > 0
           AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
-          AND pipelineStage NOT IN ('expired', 'rejected')
+          AND pipelineStage NOT IN (${PrismaRuntime.join(DEFAULT_HIDDEN_STAGES)})
       `;
     }
     const eligibleIds = rows.map((r) => r.id);

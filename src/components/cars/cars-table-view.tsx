@@ -319,14 +319,14 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
   const handlePriceMinChange = (value: string) => {
     if (priceMinDebounceRef.current) clearTimeout(priceMinDebounceRef.current);
     priceMinDebounceRef.current = setTimeout(() => {
-      push({ priceMin: value || undefined });
+      push({ priceMin: Number(value) < 0 ? undefined : value || undefined });
     }, 250);
   };
 
   const handlePriceMaxChange = (value: string) => {
     if (priceMaxDebounceRef.current) clearTimeout(priceMaxDebounceRef.current);
     priceMaxDebounceRef.current = setTimeout(() => {
-      push({ priceMax: value || undefined });
+      push({ priceMax: Number(value) < 0 ? undefined : value || undefined });
     }, 250);
   };
 
@@ -514,6 +514,7 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
           key={`priceMin-${params.priceMin ?? ""}`}
           type="number"
           inputMode="numeric"
+          min="0"
           placeholder="Min price"
           defaultValue={params.priceMin ?? ""}
           onChange={(e) => handlePriceMinChange(e.target.value)}
@@ -524,6 +525,7 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
           key={`priceMax-${params.priceMax ?? ""}`}
           type="number"
           inputMode="numeric"
+          min="0"
           placeholder="Max price"
           defaultValue={params.priceMax ?? ""}
           onChange={(e) => handlePriceMaxChange(e.target.value)}

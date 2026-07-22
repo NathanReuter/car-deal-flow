@@ -635,6 +635,34 @@ describe("getBundlesPage", () => {
     expect(result.rows[0].car.brand).toBe("Chevrolet");
   });
 
+  it("belowFipePctMin excludes rejected cars when no stage filter", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    // Mark car1 (Toyota) rejected and give it a qualifying FIPE value
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected", fipeValueBRL: 200_000 }, // 100_000 <= 200_000 * 0.80 = 160_000 ✓
+    });
+
+    // With no stage filter, rejected should be hidden even though price qualifies
+    const result = await getBundlesPage({ belowFipePctMin: 20 }, ctx.prisma);
+    const brands = result.rows.map((b) => b.car.brand);
+    expect(brands).not.toContain("Toyota");
+  });
+
+  it("belowFipePctMin with explicit stage=rejected returns rejected cars", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected", fipeValueBRL: 200_000 },
+    });
+
+    const result = await getBundlesPage({ belowFipePctMin: 20, stage: "rejected" }, ctx.prisma);
+    expect(result.total).toBe(1);
+    expect(result.rows[0].car.brand).toBe("Toyota");
+  });
+
   // ── pagination clamps (P4) ────────────────────────────────────────────────
 
   it("pageSize is clamped to 200 when a larger value is requested", async () => {

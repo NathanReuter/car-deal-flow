@@ -207,6 +207,37 @@ describe("getBundlesPage", () => {
     expect(result.total).toBe(5);
   });
 
+  it("hides rejected cars by default alongside expired", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected" },
+    });
+
+    const result = await getBundlesPage({}, ctx.prisma);
+
+    // 6 seeded - 1 expired - 1 rejected = 4
+    expect(result.total).toBe(4);
+    const brands = result.rows.map((b) => b.car.brand);
+    expect(brands).not.toContain("Toyota"); // rejected car excluded
+    expect(brands).not.toContain("Chevrolet"); // expired car excluded
+  });
+
+  it("includes rejected when stage filter is explicitly set to rejected", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected" },
+    });
+
+    const result = await getBundlesPage({ stage: "rejected" }, ctx.prisma);
+
+    expect(result.total).toBe(1);
+    expect(result.rows[0].car.brand).toBe("Toyota");
+  });
+
   // ── pagination ────────────────────────────────────────────────────────────
 
   it("paginates correctly — page 1 of pageSize 2 returns 2 rows, total 5", async () => {

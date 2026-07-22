@@ -252,9 +252,9 @@ export async function getBundlesPage(
   // Build the Prisma where clause
   const where: Prisma.CarWhereInput = {};
 
-  // Default: hide expired unless stage is explicitly chosen
+  // Default: hide expired and rejected unless stage is explicitly chosen
   if (!params.stage) {
-    where.pipelineStage = { not: "expired" };
+    where.pipelineStage = { notIn: ["expired", "rejected"] };
   } else {
     where.pipelineStage = params.stage;
   }
@@ -305,7 +305,7 @@ export async function getBundlesPage(
         WHERE fipeValueBRL IS NOT NULL
           AND fipeValueBRL > 0
           AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
-          AND pipelineStage != 'expired'
+          AND pipelineStage NOT IN ('expired', 'rejected')
       `;
     }
     const eligibleIds = rows.map((r) => r.id);

@@ -207,6 +207,37 @@ describe("getBundlesPage", () => {
     expect(result.total).toBe(5);
   });
 
+  it("hides rejected cars by default alongside expired", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected" },
+    });
+
+    const result = await getBundlesPage({}, ctx.prisma);
+
+    // 6 seeded - 1 expired - 1 rejected = 4
+    expect(result.total).toBe(4);
+    const brands = result.rows.map((b) => b.car.brand);
+    expect(brands).not.toContain("Toyota"); // rejected car excluded
+    expect(brands).not.toContain("Chevrolet"); // expired car excluded
+  });
+
+  it("includes rejected when stage filter is explicitly set to rejected", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected" },
+    });
+
+    const result = await getBundlesPage({ stage: "rejected" }, ctx.prisma);
+
+    expect(result.total).toBe(1);
+    expect(result.rows[0].car.brand).toBe("Toyota");
+  });
+
   // ── pagination ────────────────────────────────────────────────────────────
 
   it("paginates correctly — page 1 of pageSize 2 returns 2 rows, total 5", async () => {
@@ -602,6 +633,34 @@ describe("getBundlesPage", () => {
     const result = await getBundlesPage({ belowFipePctMin: 20, stage: "expired" }, ctx.prisma);
     expect(result.total).toBe(1);
     expect(result.rows[0].car.brand).toBe("Chevrolet");
+  });
+
+  it("belowFipePctMin excludes rejected cars when no stage filter", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    // Mark car1 (Toyota) rejected and give it a qualifying FIPE value
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected", fipeValueBRL: 200_000 }, // 100_000 <= 200_000 * 0.80 = 160_000 ✓
+    });
+
+    // With no stage filter, rejected should be hidden even though price qualifies
+    const result = await getBundlesPage({ belowFipePctMin: 20 }, ctx.prisma);
+    const brands = result.rows.map((b) => b.car.brand);
+    expect(brands).not.toContain("Toyota");
+  });
+
+  it("belowFipePctMin with explicit stage=rejected returns rejected cars", async () => {
+    await seedGoal(ctx.prisma);
+    const { r1 } = await seedCars(ctx.prisma);
+    await ctx.prisma.car.update({
+      where: { id: r1.carId },
+      data: { pipelineStage: "rejected", fipeValueBRL: 200_000 },
+    });
+
+    const result = await getBundlesPage({ belowFipePctMin: 20, stage: "rejected" }, ctx.prisma);
+    expect(result.total).toBe(1);
+    expect(result.rows[0].car.brand).toBe("Toyota");
   });
 
   // ── pagination clamps (P4) ────────────────────────────────────────────────

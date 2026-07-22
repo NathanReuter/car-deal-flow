@@ -3,6 +3,7 @@ import {
   detectDamageSignals,
   formatDamageRejection,
 } from "@/lib/filters/damageSignals";
+import { findDiscontinuedRisk } from "@/lib/filters/discontinuedRisk";
 
 // Each criterion contributes equal weight to the fit score; a hard-excluded
 // brand/model always drives the score to 0 regardless of other matches.
@@ -30,6 +31,19 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
     };
   }
 
+  const discontinuedRisk = findDiscontinuedRisk(car.brand, car.model);
+  if (discontinuedRisk) {
+    failed.push(`${car.brand} ${car.model}: ${discontinuedRisk}`);
+    return {
+      carId: car.id,
+      goalId: goal.id,
+      score: 0,
+      matchedCriteria: [],
+      failedCriteria: failed,
+      explanation: `${car.brand} ${car.model} carries elevated resale/support risk: ${discontinuedRisk}.`,
+    };
+  }
+
   const damage = detectDamageSignals(car.notes);
   if (damage.blocked) {
     const reason = formatDamageRejection(damage.reasons);
@@ -41,6 +55,26 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
       matchedCriteria: [],
       failedCriteria: failed,
       explanation: `Listing shows damage/sinistro signals (${damage.reasons.join(", ")}). Only integral/conservado inventory is wanted.`,
+    };
+  }
+
+  // A body type outside the goal's preferred list is a segment mismatch (e.g. an
+  // entry hatch when the goal wants compact SUVs), not a partial-credit gap — it
+  // hard-rejects like the excluded-model and damage gates above.
+  if (
+    goal.preferredBodyTypes.length > 0 &&
+    !goal.preferredBodyTypes.includes(car.bodyType)
+  ) {
+    failed.push(
+      `${car.bodyType} is outside the preferred body types (${goal.preferredBodyTypes.join(", ")})`,
+    );
+    return {
+      carId: car.id,
+      goalId: goal.id,
+      score: 0,
+      matchedCriteria: [],
+      failedCriteria: failed,
+      explanation: `${car.brand} ${car.model} is a ${car.bodyType}, outside the goal's preferred body types (${goal.preferredBodyTypes.join(", ")}).`,
     };
   }
 
@@ -56,14 +90,14 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
       ok: car.mileageKm !== null && car.mileageKm <= goal.maxMileageKm,
     },
     {
-      label: `Preferred body type (${goal.preferredBodyTypes.join(", ")})`,
-      ok: goal.preferredBodyTypes.includes(car.bodyType),
-    },
-    {
       label: `Preferred brand (${goal.preferredBrands.join(", ")})`,
       ok: goal.preferredBrands.length === 0 || goal.preferredBrands.includes(car.brand),
     },
     {
+      // Note: once preferredBodyTypes is gated above to a family-space-eligible
+      // set (e.g. ["suv"]), every car reaching this point already satisfies this
+      // check — it only still discriminates when preferredBodyTypes is empty or
+      // includes hatch/coupe alongside family-capable body types.
       label: "Family space requirement",
       ok: !goal.familySpaceRequired || ["suv", "minivan", "sedan", "pickup", "wagon"].includes(car.bodyType),
     },

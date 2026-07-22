@@ -11,21 +11,27 @@ async function main() {
     console.log(`Active goal already present: ${existing.name}`);
     return;
   }
+  // Mirrors the live production goal (goal-01) as of 2026-07-22. This is only a
+  // bootstrap default for a fresh DB with no active goal yet — the /goal UI page
+  // is the source of truth going forward. Keep preferredBodyTypes SUV-only:
+  // computeGoalFit hard-rejects any body type outside this list (see
+  // src/lib/scoring/goalFit.ts), so re-adding "hatch"/"sedan" here would let
+  // entry-segment cars back into new_lead/parked on a fresh environment.
   await prisma.buyingGoal.create({
     data: {
-      name: "Primary buy — prefer T-Cross / Nivus / HR-V / BYD / RAV4",
+      name: "Family SUV/Hatch upgrade — 2026 H2",
       active: true,
       budgetMinBRL: 60_000,
-      budgetMaxBRL: 1_000_000,
-      minYear: 2021,
-      maxMileageKm: 90_000,
-      requiredFeatures: JSON.stringify([]),
-      preferredBodyTypes: JSON.stringify(["hatch", "sedan", "suv"]),
-      preferredBrands: JSON.stringify([]),
-      excludedBrandsModels: JSON.stringify([]),
-      fuelEconomyThresholdKmL: 10,
-      minResaleLiquidityScore: 50,
-      familySpaceRequired: false,
+      budgetMaxBRL: 100_000,
+      minYear: 2022,
+      maxMileageKm: 70_000,
+      requiredFeatures: JSON.stringify(["Reverse Camera", "Bluetooth/CarPlay"]),
+      preferredBodyTypes: JSON.stringify(["suv"]),
+      preferredBrands: JSON.stringify(["Toyota", "Honda", "Volkswagen", "Hyundai", "Chevrolet", "Byd"]),
+      excludedBrandsModels: JSON.stringify(["Jeep Renegade"]),
+      fuelEconomyThresholdKmL: 9,
+      minResaleLiquidityScore: 55,
+      familySpaceRequired: true,
     },
   });
   console.log("Seeded active buying goal.");

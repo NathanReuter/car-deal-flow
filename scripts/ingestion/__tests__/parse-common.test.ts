@@ -46,6 +46,13 @@ describe("normalizeBrand", () => {
   it("preserves already-normalized brand", () => {
     expect(normalizeBrand("Toyota")).toBe("Toyota");
   });
+
+  it("normalizes GWM/Haval casing variants to a single canonical brand", () => {
+    expect(normalizeBrand("Gwm")).toBe("GWM");
+    expect(normalizeBrand("GWM")).toBe("GWM");
+    expect(normalizeBrand("Haval")).toBe("GWM");
+    expect(normalizeBrand("gwm")).toBe("GWM");
+  });
 });
 
 describe("inferBodyType", () => {

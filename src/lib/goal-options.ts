@@ -16,6 +16,7 @@ export const BRAND_OPTIONS: string[] = [
   "Citroën",
   "Fiat",
   "Ford",
+  "GWM",
   "Honda",
   "Hyundai",
   "Jeep",

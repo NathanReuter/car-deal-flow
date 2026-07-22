@@ -61,6 +61,12 @@ export const BRAND_ALIASES: Record<string, string> = {
   Mini: "Mini",
   GM: "Chevrolet",
   VW: "Volkswagen",
+  GWM: "GWM",
+  Gwm: "GWM",
+  HAVAL: "GWM",
+  Haval: "GWM",
+  "GREAT WALL": "GWM",
+  "GREAT WALL MOTORS": "GWM",
 };
 
 export function parseBrl(raw: string | null | undefined): number | null {

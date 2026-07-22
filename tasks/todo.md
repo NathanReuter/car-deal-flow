@@ -85,6 +85,12 @@ Status: **Planned (2026-07-20)** — awaiting Phase 0 start
 - [ ] Dedicated phone number for WhatsApp groups (Task 6.1)
 - [ ] RapidAPI account/key (Task 6.2)
 
+## FW-4: Webmotors antibot — Camoufox swap (separate scoped fix, own plan)
+
+- [ ] See `tasks/issue-webmotors-antibot-camoufox.md` for the full task
+      breakdown (Tasks 1–5 + checkpoints A/B/C). Not tracked as checkboxes
+      here to avoid duplicating state across two files.
+
 ## Out of scope (unchanged from prior plan)
 
 Instagram/Apify, paid plate APIs, Repasse Já / Repasses.com.br (dealer-gated — revisit only if registration proves feasible), Sinesp theft checks (Phase-2 risk-check extension via Infosimples, deferred).

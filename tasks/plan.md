@@ -200,3 +200,16 @@ Tracked in the SDD ledger. Notable ones worth a cleanup pass:
 - **Storefronts**: `MODEL_TO_BRAND` silent-drop for exotic brands (add a `console.warn`); slug accent normalization for the Compra Certa `sourceUrl`.
 - **Foundation**: add a test + intent comment for the identity-MERGE no-overwrite of `sourceChannel`/`confidence`.
 - **OLX**: remove dead `OLX_SEARCH_BASE`; optional `--regions` CLI flag.
+
+### FW-4 — Webmotors antibot: Camoufox swap (2026-07-22, separate scoped fix)
+`npm run harvest:webmotors` is being blocked by PerimeterX mid-run (fail-closed
+detection from issue #8 works correctly; the *bypass* itself needs
+strengthening — `puppeteer-extra-plugin-stealth` is obsolete/fingerprinted in
+2026). Full design + task breakdown live in their own docs, not folded into
+this plan:
+
+- Spec: `docs/superpowers/specs/2026-07-22-webmotors-antibot-camoufox-design.md`
+- Plan: `tasks/issue-webmotors-antibot-camoufox.md`
+- Also incidentally resolves the FW-3 Webmotors `fetchApiPage`/`listWebmotorsAds`
+  de-duplication note above (Task 2 of that plan consolidates both files onto
+  one shared launch helper).

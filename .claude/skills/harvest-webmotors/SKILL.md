@@ -27,8 +27,21 @@ Platform: `Webmotors`, `sellerType: repasse`, `dealPhase: pre_repossession`.
   is present and !== "PF" is skipped with reason `not_pf` rather than ingested;
   (3) `hasFinancingSignal` text gate rejects plain-sale ads without a
   financing-transfer phrase. Dealer stock cannot pass all three layers.
-- Stealth may degrade over time as Webmotors tightens bot detection. Upgrade
-  path: switch the stealth plugin to **Camoufox** if detection rates increase.
+- Anti-bot evasion (measured 2026-07-23): a fresh warm session clears ~6 API
+  pages before Cloudflare/PerimeterX returns 403. Two levers mitigate this:
+  (1) **jittered pacing** — `throttleFetch({minMs,maxMs})` with `WM_PACING`
+  (1.5–4s) instead of a constant interval; (2) **context rotation** — the list
+  and harvest CLIs rotate the browser context (drop the session cookie +
+  re-warm the homepage via `warmWebmotorsContext`) every `WM_ROTATE_EVERY_PAGES`
+  (5) fetches, staying under the block ceiling. Rotation resets the *cookie*,
+  not the *IP*: if the source IP itself gets flagged (degrades within ~15min of
+  heavy runs), rotate the IP (e.g. phone-tether + airplane-mode toggle) or let
+  it cool. **Camoufox was evaluated and rejected** (unresolved `chrome://juggler`
+  automation leak — worse than the stealth baseline). curl-impersonate
+  (`curl_cffi` chrome136) can spend a browser-minted cookie over matched
+  JA4+H2, but only ~1–3 pages/token, so the in-browser rotation path above is
+  the primary strategy; see `scripts/ingestion/webmotors-probe.ts` /
+  `webmotors-spend-test.ts` for the diagnostics.
 - Fail-closed anti-bot handling (issue #8): the internal JSON API is
   classified per page. A PerimeterX block — non-OK HTTP (403/429), an HTTP-200
   anti-bot HTML wall (*"Access to this page has been denied"* / `px-captcha`),

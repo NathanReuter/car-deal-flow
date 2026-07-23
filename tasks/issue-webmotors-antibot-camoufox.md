@@ -79,6 +79,44 @@ open-ended exploration. All experimental changes (package.json,
 package-lock.json, spike script) were reverted; repo is back to a clean
 state matching `main`.
 
+## Task 1 outcome, round 2 (2026-07-23) — dug deeper per user request, root cause found
+
+User asked to dig further rather than fall back immediately. Suspected the
+zero-cookie/instant-block result in round 1 was a locale/timezone/geo
+mismatch (Camoufox's fingerprint defaulted to no `geoip`, so the generated
+locale/timezone didn't match a Brazilian IP — a classic PerimeterX
+behavioral-mismatch tell). Retried with `geoip: true`, `locale: "pt-BR"`,
+`humanize: true`, plus request/console logging.
+
+**Result: fingerprint mismatch theory was correct (page now correctly
+reports `tz: America/Sao_Paulo`, `lang: pt-BR`, and PerimeterX cookies
+`_pxvid/_px3/pxcts/_pxde` are now set) — but the outcome is still worse
+than baseline.** The homepage itself now returns PerimeterX's full block
+page (`document.title === "Access to this page has been denied"`), not
+just the API. Console logging caught the root cause:
+
+```text
+Security Error: Content at https://www.webmotors.com.br/ may not load
+data from chrome://juggler/content/juggler.xul.
+```
+
+This is Playwright's Firefox automation driver (**Juggler**) leaking an
+internal `chrome://juggler/...` reference directly into page-visible
+console errors — a structural automation fingerprint leak in this
+`camoufox-js@0.11.2` + `playwright@1.60.0`(downgrade workaround) pairing,
+not something fixable by tuning `LaunchOptions`. It means PerimeterX's JS
+sensor can directly observe that the page is Juggler-automated. Two
+independent attempts now confirm this specific package pairing is
+currently **more** detectable than the existing Chromium+stealth setup,
+which still clears 6 pages before blocking.
+
+**Conclusion: do not pursue `camoufox-js@0.11.2` further for this site.**
+The failure isn't tunable via config; it's a leak in the automation
+protocol bridge itself, and fixing it would mean patching/forking
+`camoufox-js` or waiting for an upstream fix — well outside this task's
+scope. Tasks 2–5 (which assumed Camoufox would work) are now void; see the
+follow-up decision presented to the user for the actual next step.
+
 **Tasks 2–5 below are now blocked pending a decision** on how to proceed —
 see the follow-up options presented to the user.
 

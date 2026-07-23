@@ -14,7 +14,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { chromium } from "playwright-extra";
-import type { Page } from "playwright";
+import type { Browser, BrowserContext, Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
 import { throttleFetch } from "./lib/harvest-runner";
@@ -31,6 +31,32 @@ export const WM_API_BASE = "https://www.webmotors.com.br/api/search/car";
 export const WM_QUERIES = ["repasse", "assumo+financiamento", "financiado"];
 
 export const DEFAULT_MAX_PAGES = 10;
+
+// Anti-bot pacing/rotation (measured 2026-07-23: a fresh warm session clears ~6
+// API pages before Cloudflare/PerimeterX 403s, and a constant interval is itself
+// a bot tell). Jitter each request and rotate the browser context — dropping the
+// session cookie and re-warming the homepage — before hitting that page ceiling.
+// Opt-in from the CLI entrypoints only; the exported functions default to the
+// fixed delay so unit tests (which inject a fake Page) stay fast.
+export const WM_PACING = { minMs: 1500, maxMs: 4000 };
+export const WM_ROTATE_EVERY_PAGES = 5;
+
+/**
+ * Launch a fresh context and warm the homepage so PerimeterX/Cloudflare issue a
+ * valid session cookie. Shared by the list + harvest CLIs and by mid-run context
+ * rotation. `locale: pt-BR` matches the target market's expected fingerprint.
+ */
+export async function warmWebmotorsContext(
+  browser: Browser,
+): Promise<{ context: BrowserContext; page: Page }> {
+  const context = await browser.newContext({ locale: "pt-BR" });
+  const page = await context.newPage();
+  await page.goto(WM_HOMEPAGE, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  // Jittered settle time — a constant wait is itself a bot tell, same rationale
+  // as the inter-request pacing.
+  await page.waitForTimeout(2500 + Math.floor(Math.random() * 2000));
+  return { context, page };
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -199,31 +225,56 @@ export async function listWebmotorsAds(options: {
   queries?: string[];
   maxPagesPerQuery?: number;
   page: Page;
+  /** When provided, rotate the context + re-warm every rotateEveryPages fetches. */
+  browser?: Browser;
+  rotateEveryPages?: number;
+  /** Jitter window for inter-request pacing (opt-in; default fixed delay). */
+  pacing?: { minMs: number; maxMs: number };
 }): Promise<WmListResult> {
   const queries = options.queries ?? WM_QUERIES;
   const maxPages = options.maxPagesPerQuery ?? DEFAULT_MAX_PAGES;
+  const rotateEvery = options.rotateEveryPages ?? WM_ROTATE_EVERY_PAGES;
   const byId = new Map<string, WmListCard>();
 
-  for (const keyword of queries) {
-    for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
-      // fetchApiPage throws WebmotorsBlockError on an anti-bot block. We let it
-      // propagate to the CLI (which exits non-zero) on purpose: fail closed
-      // rather than swallow a block and emit a truncated list (issue #8). Do
-      // NOT wrap this in a try/catch that returns partial results.
-      const results = await fetchApiPage(options.page, keyword, pageNo);
-      if (results.length === 0) break;
-
-      let newOnPage = 0;
-      for (const r of results) {
-        const id = String(r.UniqueId);
-        if (!byId.has(id)) {
-          byId.set(id, resultToCard(r));
-          newOnPage++;
+  let page = options.page;
+  // Track the initial (pre-warmed) context too, so the first rotation closes it
+  // instead of orphaning it for the whole run. Null in tests (no browser).
+  let context: BrowserContext | null = options.browser ? options.page.context() : null;
+  let pagesSinceWarm = 0;
+  try {
+    for (const keyword of queries) {
+      for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+        // Rotate to a fresh session before crossing the ~6-page block ceiling.
+        if (options.browser && pagesSinceWarm >= rotateEvery) {
+          if (context) await context.close();
+          const warm = await warmWebmotorsContext(options.browser);
+          context = warm.context;
+          page = warm.page;
+          pagesSinceWarm = 0;
         }
+
+        // fetchApiPage throws WebmotorsBlockError on an anti-bot block. We let it
+        // propagate to the CLI (which exits non-zero) on purpose: fail closed
+        // rather than swallow a block and emit a truncated list (issue #8). Do
+        // NOT wrap this in a try/catch that returns partial results.
+        const results = await fetchApiPage(page, keyword, pageNo);
+        pagesSinceWarm++;
+        if (results.length === 0) break;
+
+        let newOnPage = 0;
+        for (const r of results) {
+          const id = String(r.UniqueId);
+          if (!byId.has(id)) {
+            byId.set(id, resultToCard(r));
+            newOnPage++;
+          }
+        }
+        if (newOnPage === 0) break;
+        await throttleFetch(options.pacing);
       }
-      if (newOnPage === 0) break;
-      await throttleFetch();
     }
+  } finally {
+    if (context) await context.close();
   }
 
   return {
@@ -253,15 +304,15 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const browser = await chromium.launch({ headless: true });
   try {
-    const page = await browser.newPage();
-    // Warm up the homepage so PerimeterX issues a valid session cookie.
-    await page.goto(WM_HOMEPAGE, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await page.waitForTimeout(3000);
+    const { page } = await warmWebmotorsContext(browser);
 
     const result = await listWebmotorsAds({
       queries: [...WM_QUERIES, ...args.extraQueries],
       maxPagesPerQuery: args.maxPages,
       page,
+      browser,
+      rotateEveryPages: WM_ROTATE_EVERY_PAGES,
+      pacing: WM_PACING,
     });
     const safeOut = assertSafeOutPath(args.out);
     mkdirSync(dirname(safeOut), { recursive: true });

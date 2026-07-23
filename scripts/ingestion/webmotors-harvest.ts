@@ -20,12 +20,14 @@ import { webmotorsToWriteLead, type WebmotorsSearchResult } from "./webmotors-pa
 import {
   buildApiUrl,
   fetchApiPage,
+  warmWebmotorsContext,
   WebmotorsBlockError,
   WM_API_BASE,
-  WM_HOMEPAGE,
+  WM_PACING,
   WM_QUERIES,
+  WM_ROTATE_EVERY_PAGES,
 } from "./webmotors-list";
-import type { Page } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import {
   bumpSkip,
   createHarvestSummary,
@@ -65,6 +67,10 @@ export async function harvestWebmotors(options: {
   applyGoalFilter?: boolean;
   /** Reuse an already-warmed page instead of launching a browser (tests). */
   page?: Page;
+  /** Jitter window for inter-request pacing (opt-in; default fixed delay). */
+  pacing?: { minMs: number; maxMs: number };
+  /** Rotate the context + re-warm every N fetches (real runs only). */
+  rotateEveryPages?: number;
 }): Promise<HarvestSummary> {
   const summary = createHarvestSummary("Webmotors");
   const queries = options.queries ?? WM_QUERIES;
@@ -85,26 +91,41 @@ export async function harvestWebmotors(options: {
 
   const ownBrowser = !options.page;
   const browser = ownBrowser ? await chromium.launch({ headless: true }) : null;
+  const rotateEvery = options.rotateEveryPages ?? WM_ROTATE_EVERY_PAGES;
+  let context: BrowserContext | null = null;
+  let pagesSinceWarm = 0;
   try {
-    const page = options.page ?? (await browser!.newPage());
-
+    // Warm up homepage so PerimeterX/Cloudflare issue a valid session cookie.
+    let page: Page;
     if (ownBrowser) {
-      // Warm up homepage so PerimeterX issues a valid session cookie.
-      await page.goto(WM_HOMEPAGE, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      await page.waitForTimeout(3000);
+      const warm = await warmWebmotorsContext(browser!);
+      context = warm.context;
+      page = warm.page;
+    } else {
+      page = options.page!;
     }
 
-    // Track seen IDs to skip duplicates across keyword passes.
+    // Track seen IDs to skip duplicates across keyword passes (and rotations).
     const seen = new Set<string>();
 
     outer: for (const keyword of queries) {
       queriesAttempted++;
       let rawThisKeyword = 0;
       for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
+        // Rotate to a fresh session before crossing the ~6-page block ceiling.
+        if (ownBrowser && pagesSinceWarm >= rotateEvery) {
+          if (context) await context.close();
+          const warm = await warmWebmotorsContext(browser!);
+          context = warm.context;
+          page = warm.page;
+          pagesSinceWarm = 0;
+        }
+
         const pageUrl = buildApiUrl(keyword, pageNo);
         let results: WebmotorsSearchResult[];
         try {
           results = await fetchApiPage(page, keyword, pageNo);
+          pagesSinceWarm++;
         } catch (err) {
           // Anti-bot block ⇒ fail closed: record it and abort the whole run so
           // the orchestrator marks the source failed instead of silently
@@ -165,7 +186,7 @@ export async function harvestWebmotors(options: {
           if (summary.sampleUrls.length < 10) summary.sampleUrls.push(input.sourceUrl);
         }
 
-        await throttleFetch();
+        await throttleFetch(options.pacing);
       }
       if (rawThisKeyword > 0) queriesWithResults++;
     }
@@ -240,6 +261,8 @@ async function main() {
     limit: args.limit,
     summaryOut: args.summaryOut ? assertSafeOutPath(args.summaryOut) : undefined,
     applyGoalFilter: !args.noGoalFilter,
+    pacing: WM_PACING,
+    rotateEveryPages: WM_ROTATE_EVERY_PAGES,
   });
   console.log(JSON.stringify(summary, null, 2));
 }

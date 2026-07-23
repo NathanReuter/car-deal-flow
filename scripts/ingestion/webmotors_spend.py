@@ -19,6 +19,8 @@ Usage (normally invoked by the Node script, not by hand):
     python3 scripts/ingestion/webmotors_spend.py <handoff.json>
 """
 import json
+import os
+import random
 import sys
 import time
 
@@ -54,6 +56,12 @@ def main() -> int:
         "Sec-Fetch-Dest": "empty",
     }
 
+    # Jittered inter-request pacing (seconds). A constant interval is itself a
+    # bot tell; WM_SPEND_DELAY_MIN/MAX let the caller test whether human pacing
+    # extends the per-token page ceiling.
+    delay_min = float(os.environ.get("WM_SPEND_DELAY_MIN", "2"))
+    delay_max = float(os.environ.get("WM_SPEND_DELAY_MAX", "2"))
+
     results = []
     session = requests.Session(impersonate=IMPERSONATE)
     for i, url in enumerate(handoff["apiUrls"]):
@@ -71,7 +79,7 @@ def main() -> int:
         except Exception as exc:  # noqa: BLE001 - report, don't crash the run
             results.append({"url": url, "error": str(exc)})
         if i < len(handoff["apiUrls"]) - 1:
-            time.sleep(2)  # gentle pacing between pages
+            time.sleep(random.uniform(delay_min, delay_max))
 
     json.dump({"impersonate": IMPERSONATE, "responses": results}, sys.stdout)
     return 0

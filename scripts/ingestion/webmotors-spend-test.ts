@@ -61,6 +61,7 @@ export type SpendTestReport = {
   generatedAt: string;
   query: string;
   pages: number;
+  pacingSeconds: { min: number; max: number };
   mint: { pxCookies: string[]; cfCookies: string[]; totalCookies: number };
   control: { via: "in-browser"; page1: PageOutcome };
   curlCffi:
@@ -109,6 +110,8 @@ export async function runSpendTest(opts: {
   query: string;
   pages: number;
   python: string;
+  delayMin: number;
+  delayMax: number;
 }): Promise<SpendTestReport> {
   const browser = await chromium.launch({ headless: true });
   try {
@@ -161,6 +164,7 @@ export async function runSpendTest(opts: {
       generatedAt: new Date().toISOString(),
       query: opts.query,
       pages: opts.pages,
+      pacingSeconds: { min: opts.delayMin, max: opts.delayMax },
       mint,
       control: { via: "in-browser" as const, page1: control },
     };
@@ -181,6 +185,11 @@ export async function runSpendTest(opts: {
     const spend = spawnSync(opts.python, [SPENDER_PY, handoffPath], {
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
+      env: {
+        ...process.env,
+        WM_SPEND_DELAY_MIN: String(opts.delayMin),
+        WM_SPEND_DELAY_MAX: String(opts.delayMax),
+      },
     });
     if (spend.status !== 0) {
       const partial = {
@@ -214,14 +223,18 @@ function parseArgs(argv: string[]) {
   let pages = 6;
   let query = "repasse";
   let python = "python3";
+  let delayMin = 2;
+  let delayMax = 2;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--out" && argv[i + 1]) out = argv[++i]!;
     else if (a === "--pages" && argv[i + 1]) pages = Number(argv[++i]);
     else if (a === "--query" && argv[i + 1]) query = argv[++i]!;
     else if (a === "--python" && argv[i + 1]) python = argv[++i]!;
+    else if (a === "--delay-min" && argv[i + 1]) delayMin = Number(argv[++i]);
+    else if (a === "--delay-max" && argv[i + 1]) delayMax = Number(argv[++i]);
   }
-  return { out, pages, query, python };
+  return { out, pages, query, python, delayMin, delayMax };
 }
 
 async function main() {
@@ -231,6 +244,8 @@ async function main() {
     query: args.query,
     pages: args.pages,
     python: args.python,
+    delayMin: args.delayMin,
+    delayMax: args.delayMax,
   });
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(report, null, 2), "utf8");

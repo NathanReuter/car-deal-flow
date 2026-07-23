@@ -56,3 +56,6 @@ next-env.d.ts
 
 # cadence logs
 logs/
+
+# throwaway venv for the curl_cffi spend test
+.venv-curlcffi/

@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
 import {
@@ -32,7 +32,7 @@ export type HarvestPhase = "pre" | "auction" | "market" | "all";
 /**
  * Sources by deal phase.
  * - pre: pre-repossession repasse ads (owner assuming financing) — OLX, Webmotors.
- * - market: dealer stock sold outright below FIPE — NaPista, repasse storefronts.
+ * - market: dealer/classified stock sold outright (often below FIPE) — NaPista, storefronts.
  * - auction: post-repossession lots.
  */
 export const PHASE_SOURCES: Record<Exclude<HarvestPhase, "all">, HarvestSource[]> = {
@@ -64,6 +64,35 @@ const VALID_SOURCES = new Set<string>(ALL_SOURCES);
 
 export const SANTANDER_LOTS_PATH = "/tmp/santander-lots.json";
 export const SANTANDER_HTML_CAPTURE = "/tmp/santander-retomados.html";
+export const SANTANDER_PROBE_OUT = "/tmp/santander-probe/report.json";
+
+/** Decides whether the santander-list step can run after a probe attempt.
+ * Pulled out as pure logic so the probe→list gating can be unit tested
+ * without mocking child_process/fs.
+ *
+ * A blocked probe never overwrites an existing HTML capture (see
+ * santander-probe.ts), so `htmlCaptureExists` on a blocked run means either a
+ * prior successful probe or a manually-saved fallback is still there —
+ * safe to reuse rather than fail the whole run. Only error out when there's
+ * truly nothing to work with. */
+export function resolveSantanderProbeOutcome(
+  htmlCaptureExists: boolean,
+  probeReport: { blocked: boolean },
+): { ok: true } | { ok: false; reason: string } {
+  if (htmlCaptureExists) return { ok: true };
+  if (probeReport.blocked) {
+    return {
+      ok: false,
+      reason:
+        `Santander probe detected a block (Cloudflare/403) — see ${SANTANDER_PROBE_OUT}. ` +
+        `Save the listing HTML manually to ${SANTANDER_HTML_CAPTURE} from a normal browser, then rerun.`,
+    };
+  }
+  return {
+    ok: false,
+    reason: `santander-probe did not produce an HTML capture at ${SANTANDER_HTML_CAPTURE} — see ${SANTANDER_PROBE_OUT} for details.`,
+  };
+}
 
 export function parseHarvestSource(raw: string): HarvestSource {
   if (!VALID_SOURCES.has(raw)) {
@@ -243,8 +272,20 @@ export async function runHarvestSource(
       });
     }
     case "santander": {
+      runStep("santander-probe", [
+        "scripts/ingestion/santander-probe.ts",
+        "--out",
+        SANTANDER_PROBE_OUT,
+        "--html-out",
+        SANTANDER_HTML_CAPTURE,
+      ]);
+      const report = JSON.parse(readFileSync(SANTANDER_PROBE_OUT, "utf8")) as { blocked: boolean };
+      const outcome = resolveSantanderProbeOutcome(existsSync(SANTANDER_HTML_CAPTURE), report);
+      if (!outcome.ok) throw new Error(outcome.reason);
       runStep("santander-list", [
         "scripts/ingestion/santander-list.ts",
+        "--html",
+        SANTANDER_HTML_CAPTURE,
         "--out",
         SANTANDER_LOTS_PATH,
       ]);

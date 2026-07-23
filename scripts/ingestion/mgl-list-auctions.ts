@@ -29,6 +29,10 @@ export type MglAuctionListResult = {
 
 const AUCTION_HREF = /href=["']((?:https?:\/\/(?:www\.)?mgl\.com\.br)?(\/leilao\/([^/"']+)\/(\d+)\/?))["']/gi;
 
+/** mgl.com.br/leiloes 404s (site drift, 2026-07) — the homepage still surfaces
+ * live /leilao/ links in its rotating feed. */
+export const DEFAULT_MGL_INDEX_URL = "https://www.mgl.com.br/";
+
 const CORP_REPASSE =
   /\b(repasse|corporativ|frota|fleet|locadora|localiza|movida|unidas|omni|banco|financ|retomado)\b/i;
 
@@ -87,7 +91,7 @@ function bumpSkip(skipped: Record<string, number>, reason: string) {
 export async function listMglCorpAuctions(options?: {
   indexUrl?: string;
 }): Promise<MglAuctionListResult> {
-  const indexUrl = options?.indexUrl ?? "https://www.mgl.com.br/leiloes";
+  const indexUrl = options?.indexUrl ?? DEFAULT_MGL_INDEX_URL;
   const skipped: Record<string, number> = {};
   const byId = new Map<number, MglAuction>();
 

@@ -4,7 +4,7 @@ import { chromium } from "playwright-extra";
 import type { Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { assertSafeOutPath, isCliEntry } from "./fetch-guards";
-import { extractFinanceiraEventIds } from "./vip-parse";
+import { countEventLinks, extractFinanceiraEventIds } from "./vip-parse";
 import { requireVipSessionPath } from "./vip-leiloes-session";
 
 chromium.use(stealth());
@@ -25,6 +25,12 @@ async function dismissCookies(page: Page) {
   }
 }
 
+/** Thrown when the events index page didn't load recognizable event listings
+ * at all — i.e. we can't tell "no financeira auctions right now" (a genuine,
+ * legitimate empty catalog) from "the page structure changed or we got
+ * blocked" (a crash we shouldn't report as a clean empty run). */
+export class VipDiscoveryError extends Error {}
+
 export async function discoverFinanceiraEventIds(page: Page): Promise<string[]> {
   await page.goto("https://www.vipleiloes.com.br/evento", {
     waitUntil: "domcontentloaded",
@@ -33,6 +39,11 @@ export async function discoverFinanceiraEventIds(page: Page): Promise<string[]> 
   await dismissCookies(page);
   await page.waitForTimeout(1500);
   const html = await page.content();
+  if (countEventLinks(html) === 0) {
+    throw new VipDiscoveryError(
+      "events index page returned zero /evento/detalhes links of any kind — likely blocked or page structure changed, not a genuine empty catalog",
+    );
+  }
   return extractFinanceiraEventIds(html);
 }
 
@@ -107,7 +118,10 @@ export async function collectEventLots(page: Page, eventId: string): Promise<Vip
 
 export async function listVipFinanceirasLots(options?: {
   eventIds?: string[];
-}): Promise<{ lots: VipListLot[]; meta: { events: string[]; totalLots: number } }> {
+}): Promise<{
+  lots: VipListLot[];
+  meta: { events: string[]; totalLots: number; eventErrors: Record<string, string> };
+}> {
   const sessionPath = requireVipSessionPath();
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ storageState: sessionPath });
@@ -116,14 +130,17 @@ export async function listVipFinanceirasLots(options?: {
   try {
     const eventIds = options?.eventIds ?? (await discoverFinanceiraEventIds(page));
     const lots: VipListLot[] = [];
+    const eventErrors: Record<string, string> = {};
     for (const eventId of eventIds) {
       try {
         lots.push(...(await collectEventLots(page, eventId)));
       } catch (error) {
-        console.error(`EVENT ${eventId} ERROR:`, error instanceof Error ? error.message : error);
+        const message = error instanceof Error ? error.message : String(error);
+        eventErrors[eventId] = message;
+        console.error(`EVENT ${eventId} ERROR:`, message);
       }
     }
-    return { lots, meta: { events: eventIds, totalLots: lots.length } };
+    return { lots, meta: { events: eventIds, totalLots: lots.length, eventErrors } };
   } finally {
     await browser.close();
   }

@@ -38,3 +38,11 @@ until the plate is obtained from the seller (human step).
   logins/CAPTCHA; never contact sellers automatically.
 - Specs: `docs/superpowers/specs/2026-07-17-pre-repossession-repasse-ingestion-design.md`,
   `docs/superpowers/specs/2026-07-17-olx-repasse-probe.md`
+
+## Known failure modes (2026-07)
+
+- Run Playwright with `PLAYWRIGHT_BROWSERS_PATH="$HOME/Library/Caches/ms-playwright"` set.
+- OLX sits behind Cloudflare and intermittently drops mid-navigation
+  (`net::ERR_NETWORK_CHANGED` and similar). `olx-list.ts` retries each page
+  navigation up to 3 times with backoff for these transient network errors
+  only — genuine blocks/parse failures still fail closed immediately.

@@ -18,6 +18,7 @@ export type SantanderProbeReport = {
 
 export async function probeSantanderRetomados(
   url = "https://www.santander.com.br/retomados",
+  htmlOut?: string,
 ): Promise<SantanderProbeReport> {
   const browser = await chromium.launch({ headless: true });
   const notes: string[] = [];
@@ -33,6 +34,14 @@ export async function probeSantanderRetomados(
       /Attention Required!\s*\|\s*Cloudflare/i.test(html) ||
       /access denied|403 forbidden/i.test(html) ||
       response?.status() === 403;
+    // Only overwrite the capture path on a clean, unblocked fetch — a blocked
+    // (Cloudflare wall) run must never clobber a good HTML capture a human
+    // saved manually as a fallback.
+    if (htmlOut && !blocked) {
+      const safeHtmlOut = assertSafeOutPath(htmlOut);
+      mkdirSync(dirname(safeHtmlOut), { recursive: true });
+      writeFileSync(safeHtmlOut, html, "utf8");
+    }
     const lotUrls = [...html.matchAll(/href=["']([^"']*(?:retomado|veiculo|vehicle|lote)[^"']*)["']/gi)]
       .map((m) => m[1])
       .filter((href) => href.startsWith("http") || href.startsWith("/"))
@@ -62,7 +71,10 @@ async function main() {
       ? process.argv[process.argv.indexOf("--out") + 1]!
       : "/tmp/santander-probe/report.json",
   );
-  const report = await probeSantanderRetomados();
+  const htmlOut = process.argv.includes("--html-out")
+    ? process.argv[process.argv.indexOf("--html-out") + 1]!
+    : undefined;
+  const report = await probeSantanderRetomados(undefined, htmlOut);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, JSON.stringify(report, null, 2), "utf8");
   console.log(JSON.stringify(report, null, 2));

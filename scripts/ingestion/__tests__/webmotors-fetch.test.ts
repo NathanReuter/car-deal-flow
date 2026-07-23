@@ -125,6 +125,22 @@ describe("fetchApiPage", () => {
       WebmotorsBlockError,
     );
   });
+
+  it("throws WebmotorsBlockError instead of hanging forever on a silently-held-open connection", async () => {
+    // Simulates the in-page fetch's own AbortController firing: status 0,
+    // no content-type, body carrying the abort reason. A connection that
+    // never resolves must still fail closed within a bounded time rather
+    // than block the whole harvest indefinitely.
+    const page = fakePage({
+      ok: false,
+      status: 0,
+      contentType: "",
+      body: "fetch failed: AbortError: signal is aborted",
+    });
+    await expect(fetchApiPage(page, "repasse", 3)).rejects.toBeInstanceOf(
+      WebmotorsBlockError,
+    );
+  });
 });
 
 describe("listWebmotorsAds — fail-closed", () => {

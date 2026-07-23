@@ -139,7 +139,12 @@ export function classifyWmApiResponse(raw: {
   contentType: string;
   body: string;
 }): WmApiOutcome {
-  if (!raw.ok) return { kind: "blocked", reason: `HTTP ${raw.status}` };
+  if (!raw.ok) {
+    return {
+      kind: "blocked",
+      reason: raw.status === 0 ? `network error: ${raw.body}` : `HTTP ${raw.status}`,
+    };
+  }
 
   if (/html/i.test(raw.contentType) || WM_HTML_PREFIX.test(raw.body)) {
     return { kind: "blocked", reason: "anti-bot HTML page" };
@@ -169,6 +174,11 @@ export function classifyWmApiResponse(raw: {
  * anti-bot block (so callers can fail closed instead of mistaking it for
  * end-of-results). A genuine empty page returns `[]`.
  */
+/** In-page fetch timeout. Without this, a silently-held-open connection
+ * (a block tactic seen in the wild) leaves `fetch()` — and the whole
+ * harvest — hung forever instead of failing closed. */
+export const WM_FETCH_TIMEOUT_MS = 20_000;
+
 export async function fetchApiPage(
   page: Page,
   keyword: string,
@@ -176,18 +186,35 @@ export async function fetchApiPage(
 ): Promise<WebmotorsSearchResult[]> {
   const url = buildApiUrl(keyword, pageNo);
 
-  const raw = await page.evaluate(async (apiUrl: string) => {
-    const resp = await fetch(apiUrl, {
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    });
-    return {
-      ok: resp.ok,
-      status: resp.status,
-      contentType: resp.headers.get("content-type") ?? "",
-      body: await resp.text(),
-    };
-  }, url);
+  const raw = await page.evaluate(
+    async ({ apiUrl, timeoutMs }: { apiUrl: string; timeoutMs: number }) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const resp = await fetch(apiUrl, {
+          headers: { Accept: "application/json" },
+          credentials: "include",
+          signal: controller.signal,
+        });
+        return {
+          ok: resp.ok,
+          status: resp.status,
+          contentType: resp.headers.get("content-type") ?? "",
+          body: await resp.text(),
+        };
+      } catch (err) {
+        return {
+          ok: false,
+          status: 0,
+          contentType: "",
+          body: `fetch failed: ${err instanceof Error ? err.message : String(err)}`,
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    { apiUrl: url, timeoutMs: WM_FETCH_TIMEOUT_MS },
+  );
 
   const outcome = classifyWmApiResponse(raw);
   if (outcome.kind === "blocked") {

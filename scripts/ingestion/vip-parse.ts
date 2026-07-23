@@ -227,3 +227,13 @@ export function extractFinanceiraEventIds(html: string): string[] {
 
   return [...ids];
 }
+
+/** Total `/evento/detalhes/...` links on the page, financeira or not. Used to
+ * distinguish "genuinely zero financeira auctions right now" (events section
+ * loaded, none matched) from "the events page didn't load as expected"
+ * (blocked/layout drift — zero events of any kind is never a legitimate
+ * catalog state for this site). */
+export function countEventLinks(html: string): number {
+  const matches = html.match(/\/evento\/detalhes\/[a-z0-9]+/gi);
+  return matches ? new Set(matches).size : 0;
+}

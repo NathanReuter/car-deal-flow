@@ -155,3 +155,17 @@ a car with any unknown auction date is left alone.
 - Soft triage: below threshold → `parked` (still visible); exclusion →
   `rejected`. Owner promotes `new_lead` → `researching` manually.
 - Do not bid or register interest on behalf of the owner.
+
+## Known failure modes (2026-07)
+
+- Run Playwright with `PLAYWRIGHT_BROWSERS_PATH="$HOME/Library/Caches/ms-playwright"` set — VIP's list step (`vip-list-financeiras.ts`) uses the same standard `chromium.launch()` as every other source, so a "vip: totalLots 0 / EXIT 1" is almost always this env var missing in the calling shell, not a code bug.
+- `discoverFinanceiraEventIds` now distinguishes a genuine empty catalog from
+  a crash: if the VIP events index page returns **zero** `/evento/detalhes/`
+  links of any kind (financeira or not), that's treated as a block/layout
+  drift and throws `VipDiscoveryError` instead of silently reporting
+  `totalLots: 0` as a clean success. If some non-financeira events are
+  present but none match the financeira pattern, that's a legitimate empty
+  result and the run succeeds with 0 lots.
+- Per-event fetch failures during listing are now recorded in
+  `meta.eventErrors` (keyed by event id) in addition to the console log, so a
+  partial failure across events is visible in the output JSON.

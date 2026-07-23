@@ -1,9 +1,53 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   OLX_QUERIES,
   OLX_REGION_HOSTS,
   buildOlxSearchUrl,
+  gotoWithRetry,
+  isRetryableGotoError,
 } from "../olx-list";
+
+describe("isRetryableGotoError", () => {
+  it("treats transient network faults as retryable", () => {
+    expect(isRetryableGotoError("page.goto: net::ERR_NETWORK_CHANGED at https://x")).toBe(true);
+    expect(isRetryableGotoError("net::ERR_CONNECTION_RESET")).toBe(true);
+  });
+
+  it("does not treat unrelated errors as retryable", () => {
+    expect(isRetryableGotoError("Cloudflare block detected")).toBe(false);
+    expect(isRetryableGotoError("HTTP 404 for https://x")).toBe(false);
+  });
+});
+
+describe("gotoWithRetry", () => {
+  it("retries a retryable failure and succeeds", async () => {
+    const goto = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("page.goto: net::ERR_NETWORK_CHANGED"))
+      .mockResolvedValueOnce(undefined);
+    const page = { goto } as unknown as Parameters<typeof gotoWithRetry>[0];
+    await gotoWithRetry(page, "https://sc.olx.com.br/x", { backoffMs: 1 });
+    expect(goto).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a non-retryable failure", async () => {
+    const goto = vi.fn().mockRejectedValue(new Error("Cloudflare block detected"));
+    const page = { goto } as unknown as Parameters<typeof gotoWithRetry>[0];
+    await expect(gotoWithRetry(page, "https://sc.olx.com.br/x", { backoffMs: 1 })).rejects.toThrow(
+      "Cloudflare block detected",
+    );
+    expect(goto).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws after exhausting retries on repeated transient failures", async () => {
+    const goto = vi.fn().mockRejectedValue(new Error("net::ERR_NETWORK_CHANGED"));
+    const page = { goto } as unknown as Parameters<typeof gotoWithRetry>[0];
+    await expect(
+      gotoWithRetry(page, "https://sc.olx.com.br/x", { maxAttempts: 3, backoffMs: 1 }),
+    ).rejects.toThrow("net::ERR_NETWORK_CHANGED");
+    expect(goto).toHaveBeenCalledTimes(3);
+  });
+});
 
 describe("OLX_QUERIES", () => {
   it("includes all original terms", () => {

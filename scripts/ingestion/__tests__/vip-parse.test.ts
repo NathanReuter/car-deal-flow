@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  countEventLinks,
   extractFinanceiraEventIds,
   extractVipDetailFromHtml,
   parseVipLead,
@@ -23,6 +24,21 @@ describe("extractFinanceiraEventIds", () => {
       <a href="/evento/detalhes/170726prefpilar">Pilar</a>
     `;
     expect(extractFinanceiraEventIds(html)).toContain("170726prefpilar");
+  });
+});
+
+describe("countEventLinks", () => {
+  it("counts all distinct event links regardless of financeira status", () => {
+    const html = `
+      <a href="/evento/detalhes/150726bspa">SP</a>
+      <a href="/evento/detalhes/170726prefpilar">Other</a>
+      <a href="/evento/detalhes/150726bspa">duplicate</a>
+    `;
+    expect(countEventLinks(html)).toBe(2);
+  });
+
+  it("returns 0 for a page with no event links (blocked/layout drift signal)", () => {
+    expect(countEventLinks("<html><body>Access Denied</body></html>")).toBe(0);
   });
 });
 

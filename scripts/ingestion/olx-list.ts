@@ -88,6 +88,35 @@ export interface OlxListResult {
   ads: OlxSearchCard[];
 }
 
+/** Transient network faults (flaky wifi, mid-request Cloudflare hiccups) worth
+ * retrying. Deliberately narrow — parse/block failures must still fail closed. */
+export function isRetryableGotoError(message: string): boolean {
+  return /net::ERR_(NETWORK_CHANGED|CONNECTION_RESET|CONNECTION_CLOSED|CONNECTION_REFUSED|CONNECTION_TIMED_OUT|TIMED_OUT|INTERNET_DISCONNECTED|NAME_NOT_RESOLVED|ADDRESS_UNREACHABLE)/i.test(
+    message,
+  );
+}
+
+/** page.goto with bounded retry/backoff for transient network errors only.
+ * Non-retryable errors (and exhausted retries) propagate unchanged. */
+export async function gotoWithRetry(
+  page: Page,
+  url: string,
+  options: { timeout?: number; maxAttempts?: number; backoffMs?: number } = {},
+): Promise<void> {
+  const maxAttempts = options.maxAttempts ?? 3;
+  const backoffMs = options.backoffMs ?? 1500;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: options.timeout ?? 60_000 });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!isRetryableGotoError(message) || attempt === maxAttempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, backoffMs * attempt));
+    }
+  }
+}
+
 const CARD_RE = /<section[^>]*class="[^"]*olx-adcard[^"]*"[^>]*>[\s\S]*?<\/section>/g;
 const AD_URL_RE =
   /href="(https:\/\/[a-z]{2}\.olx\.com\.br\/[^"]*?-(\d{9,}))(?:[?#][^"]*)?"/;
@@ -127,7 +156,7 @@ export async function listOlxAds(options: {
     for (const query of queries) {
       for (let pageNo = 1; pageNo <= maxPages; pageNo++) {
         const url = buildOlxSearchUrl(host, query, pageNo);
-        await options.page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+        await gotoWithRetry(options.page, url);
         await options.page.waitForTimeout(2500);
         const cards = parseOlxSearchCards(await options.page.content());
         if (cards.length === 0) break;

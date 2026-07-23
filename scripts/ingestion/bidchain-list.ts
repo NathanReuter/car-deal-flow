@@ -38,12 +38,18 @@ export function extractBidchainLotId(url: string): string | null {
   return m?.[1] ?? null;
 }
 
+/** Site 404s on the descriptive slug suffix some listing pages embed in the
+ * href (e.g. `/lote/72348/2ª Vara - ...`) — only `/lote/{id}` resolves.
+ * Canonicalize to that form instead of trusting the raw href. */
 export function normalizeBidchainLotUrl(raw: string, baseUrl: string): string | null {
   try {
     const url = raw.startsWith("http") ? raw : new URL(raw, baseUrl).toString();
-    if (!/\/lote\/\d+/i.test(url)) return null;
-    assertAllowedBidchainUrl(url);
-    return url;
+    const match = url.match(/\/lote\/(\d+)/i);
+    if (!match) return null;
+    const parsed = new URL(url);
+    const canonical = `${parsed.origin}/lote/${match[1]}`;
+    assertAllowedBidchainUrl(canonical);
+    return canonical;
   } catch {
     return null;
   }
@@ -129,6 +135,13 @@ export function filterBidchainListLot(
     /\bcg\s*\d/i.test(blob)
   ) {
     return { keep: false, reason: "non_car" };
+  }
+  // Listing pages mix in real estate/land/equipment lots (fazenda, terreno,
+  // container, imóvel). Require a positive vehicle signal — either an
+  // explicit category word or the PLACA/RENAVAM/CHASSI fields BIDchain
+  // prints only on vehicle lots — rather than only excluding known junk.
+  if (!/\bplaca\b|\brenavam\b|\bchassi\b|\bautom[oó]vel\b|\bve[ií]culo\b/i.test(blob)) {
+    return { keep: false, reason: "non_vehicle" };
   }
   return { keep: true };
 }

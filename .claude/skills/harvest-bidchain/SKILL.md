@@ -45,3 +45,9 @@ skipping it on a routine refresh silently erases a date already known.
 - Damage gate: colisão / sinistro / monta / sucata / batido → hard reject (see `check-damage.ts`).
 - Fail closed on ambiguous body type. Ceiling **1000 writes/run**.
 - `sellerType`: Caixa explicit → `caixa_recovery`; named bank comitente → `bank_recovery`; else `auction`.
+
+## Known failure modes (2026-07)
+
+- Run Playwright with `PLAYWRIGHT_BROWSERS_PATH="$HOME/Library/Caches/ms-playwright"` set.
+- The `/por-categoria/4` and `/leiloes` listing pages mix in real estate/farm/container lots alongside vehicles — `bidchain-list.ts` `filterBidchainListLot` requires a positive vehicle signal (PLACA/RENAVAM/CHASSI or an explicit body-type word), not just an exclude list, so expect most scanned lots to show up as `skipped.non_vehicle`.
+- Listing hrefs embed a descriptive slug after the id (e.g. `/lote/72348/2ª Vara - ...`) that 404s on fetch — `normalizeBidchainLotUrl` canonicalizes to `/lote/{id}` before fetching.

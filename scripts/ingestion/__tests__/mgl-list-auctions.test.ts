@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  DEFAULT_MGL_INDEX_URL,
   extractMglAuctionsFromHtml,
   filterMglAuction,
 } from "../mgl-list-auctions";
@@ -14,6 +15,12 @@ describe("extractMglAuctionsFromHtml", () => {
     );
     const auctions = extractMglAuctionsFromHtml(html, "https://www.mgl.com.br/leiloes");
     expect(auctions.map((a) => a.id).sort()).toEqual([7157, 7186, 7237]);
+  });
+});
+
+describe("DEFAULT_MGL_INDEX_URL", () => {
+  it("does not point at the dead /leiloes path", () => {
+    expect(DEFAULT_MGL_INDEX_URL).not.toMatch(/\/leiloes\/?$/);
   });
 });
 

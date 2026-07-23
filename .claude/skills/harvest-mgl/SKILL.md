@@ -45,3 +45,9 @@ on a routine refresh silently erases a date already known.
 - Auction filter excludes batidos/sucatas before lot fetch.
 - Damage gate + fail-closed body type. Ceiling **1000 writes/run**.
 - Price = valor mínimo / abertura only.
+
+## Known failure modes (2026-07)
+
+- Run Playwright with `PLAYWRIGHT_BROWSERS_PATH="$HOME/Library/Caches/ms-playwright"` set (Cursor agent shells otherwise can't find the installed browser).
+- `mgl.com.br/leiloes` 404s (site drift) — `mgl-list-auctions.ts` now defaults to the homepage (`DEFAULT_MGL_INDEX_URL`), which still surfaces `/leilao/...` links in its rotating feed.
+- The homepage feed rotates and doesn't always include corp-repasse auctions, so a run can legitimately return `auctions: []` / 0 writes with exit 0 — that's empty inventory, not a crash. If writes are consistently 0 across multiple runs, re-probe the site for a dedicated listing endpoint (`/Comitente/repasse/` renders via `apiplugin/GetBusca` client-side and wasn't wired up).

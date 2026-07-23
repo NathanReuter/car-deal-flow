@@ -166,8 +166,22 @@ export async function runSpendTest(opts: {
     // Contains live session cookies — owner-only perms, and deleted on the
     // success path below. Left in place on the skip paths so the user can run
     // the sidecar manually (the PARTIAL verdict points them at it).
+    //
+    // Fixed, predictable path in a shared tmp dir: remove any pre-existing
+    // entry (a leftover from a prior run, or — worst case — a symlink planted
+    // ahead of time) before creating fresh with an exclusive flag, so the
+    // write can never follow a symlink to somewhere else.
     const handoffPath = join(tmpdir(), "webmotors-spend-handoff.json");
-    writeFileSync(handoffPath, JSON.stringify(handoff), { encoding: "utf8", mode: 0o600 });
+    try {
+      unlinkSync(handoffPath);
+    } catch {
+      /* nothing to remove */
+    }
+    writeFileSync(handoffPath, JSON.stringify(handoff), {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
 
     const base = {
       generatedAt: new Date().toISOString(),

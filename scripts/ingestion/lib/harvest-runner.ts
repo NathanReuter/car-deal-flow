@@ -8,8 +8,20 @@ export const DEFAULT_CEILING = 1000;
 /** Delay between lot fetches to reduce Cloudflare / rate-limit blocks. */
 export const FETCH_DELAY_MS = 300;
 
-export function throttleFetch(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, FETCH_DELAY_MS));
+/**
+ * Wait between fetches. Default is the fixed {@link FETCH_DELAY_MS} used by every
+ * harvester. Pass a {minMs, maxMs} window to get a randomized (jittered) delay
+ * instead — a constant interval is itself a bot signal. Opt-in per caller so the
+ * shared default (and the 10 other harvesters) are unchanged.
+ */
+export function throttleFetch(opts?: { minMs?: number; maxMs?: number }): Promise<void> {
+  const min = opts?.minMs;
+  const max = opts?.maxMs;
+  const delay =
+    min !== undefined && max !== undefined && max > min
+      ? min + Math.floor(Math.random() * (max - min + 1))
+      : (min ?? FETCH_DELAY_MS);
+  return new Promise((resolve) => setTimeout(resolve, delay));
 }
 
 export type HarvestSummary = {

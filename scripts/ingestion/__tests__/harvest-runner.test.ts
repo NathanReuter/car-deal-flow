@@ -1,13 +1,15 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WriteLeadInput } from "../write-lead";
 import {
   bumpSkip,
   createHarvestSummary,
   DEFAULT_CEILING,
+  FETCH_DELAY_MS,
   hasReachedCeiling,
+  jitterDelay,
   parseWriteLeadOutput,
   spawnWriteLead,
   totalWritten,
@@ -88,6 +90,36 @@ describe("writeSummary", () => {
     expect(saved.source).toBe("BIDchain");
     expect(saved.skipped.damage).toBe(1);
     expect(typeof saved.durationMs).toBe("number");
+  });
+});
+
+describe("jitterDelay", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("returns the fixed default when no window is given (other harvesters unchanged)", () => {
+    expect(jitterDelay()).toBe(FETCH_DELAY_MS);
+    expect(jitterDelay({})).toBe(FETCH_DELAY_MS);
+  });
+
+  it("maps the random range onto [minMs, maxMs] inclusive", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    expect(jitterDelay({ minMs: 1500, maxMs: 4000 })).toBe(1500);
+    vi.spyOn(Math, "random").mockReturnValue(0.999999);
+    expect(jitterDelay({ minMs: 1500, maxMs: 4000 })).toBe(4000);
+  });
+
+  it("never leaves the window over many random draws", () => {
+    for (let i = 0; i < 1000; i++) {
+      const d = jitterDelay({ minMs: 1500, maxMs: 4000 });
+      expect(d).toBeGreaterThanOrEqual(1500);
+      expect(d).toBeLessThanOrEqual(4000);
+    }
+  });
+
+  it("falls back to the lone minMs when maxMs is absent or not greater", () => {
+    expect(jitterDelay({ minMs: 800 })).toBe(800);
+    expect(jitterDelay({ minMs: 800, maxMs: 800 })).toBe(800);
+    expect(jitterDelay({ minMs: 800, maxMs: 500 })).toBe(800);
   });
 });
 

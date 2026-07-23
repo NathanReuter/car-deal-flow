@@ -27,7 +27,7 @@
 //     [--out /tmp/webmotors-spend/result.json]
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { chromium } from "playwright-extra";
@@ -101,7 +101,13 @@ function buildVerdict(report: Omit<SpendTestReport, "verdict">): string {
   const first = cc.find((p) => p.page === 1);
   if (first && first.outcome !== "blocked" && first.outcome !== "fetch-error") {
     const clean = cc.filter((p) => p.outcome === "ok" || p.outcome === "empty").length;
-    return `SUCCESS: the browser-minted cookie SURVIVED being spent over curl_cffi/chrome136 — ${clean}/${cc.length} pages clean. JA4+H2 parity is sufficient; the mint-and-spend token-economy branch is VIABLE. Next: measure the per-token page ceiling and wire the rotation.`;
+    const portable = `the browser-minted cookie SURVIVED being spent over curl_cffi/chrome136 (${clean}/${cc.length} pages clean) — JA4+H2 parity is sufficient`;
+    // Portability is proven either way; the page count says whether the token
+    // economy is worth it or whether the in-browser rotation path wins.
+    if (clean * 2 >= cc.length) {
+      return `SUCCESS: ${portable}. The mint-and-spend token-economy branch is VIABLE. Next: wire per-token rotation.`;
+    }
+    return `PORTABLE-BUT-LOW-CEILING: ${portable}, but the per-token page ceiling is low. Human pacing helps; a raw client still can't feed the sensor telemetry the browser does. Prefer in-browser pagination + context rotation over a curl_cffi spender.`;
   }
   return "BOUND-BEYOND-JA4: in-browser worked but the curl_cffi replay (matched JA4+H2) was blocked on page 1 — the session is bound to something curl_cffi still doesn't match (JA3, or an ongoing sensor-telemetry POST). Prefer warm-cookie-once-in-same-context replay, or the surface-switch branch.";
 }
@@ -157,8 +163,11 @@ export async function runSpendTest(opts: {
       cookies: cookies.map((c) => ({ name: c.name, value: c.value })),
       apiUrls,
     };
+    // Contains live session cookies — owner-only perms, and deleted on the
+    // success path below. Left in place on the skip paths so the user can run
+    // the sidecar manually (the PARTIAL verdict points them at it).
     const handoffPath = join(tmpdir(), "webmotors-spend-handoff.json");
-    writeFileSync(handoffPath, JSON.stringify(handoff), "utf8");
+    writeFileSync(handoffPath, JSON.stringify(handoff), { encoding: "utf8", mode: 0o600 });
 
     const base = {
       generatedAt: new Date().toISOString(),
@@ -201,6 +210,13 @@ export async function runSpendTest(opts: {
         },
       };
       return { ...partial, verdict: buildVerdict(partial) };
+    }
+
+    // Consumed — drop the cookie file (best-effort).
+    try {
+      unlinkSync(handoffPath);
+    } catch {
+      /* already gone */
     }
 
     const parsed = JSON.parse(spend.stdout) as {

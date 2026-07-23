@@ -9,19 +9,26 @@ export const DEFAULT_CEILING = 1000;
 export const FETCH_DELAY_MS = 300;
 
 /**
+ * Resolve the delay (ms) for one throttle step. With a valid {minMs, maxMs}
+ * window returns a uniformly-random value in [minMs, maxMs]; otherwise the fixed
+ * {@link FETCH_DELAY_MS} (or a lone minMs). Pure + exported for testing.
+ */
+export function jitterDelay(opts?: { minMs?: number; maxMs?: number }): number {
+  const min = opts?.minMs;
+  const max = opts?.maxMs;
+  return min !== undefined && max !== undefined && max > min
+    ? min + Math.floor(Math.random() * (max - min + 1))
+    : (min ?? FETCH_DELAY_MS);
+}
+
+/**
  * Wait between fetches. Default is the fixed {@link FETCH_DELAY_MS} used by every
  * harvester. Pass a {minMs, maxMs} window to get a randomized (jittered) delay
  * instead — a constant interval is itself a bot signal. Opt-in per caller so the
  * shared default (and the 10 other harvesters) are unchanged.
  */
 export function throttleFetch(opts?: { minMs?: number; maxMs?: number }): Promise<void> {
-  const min = opts?.minMs;
-  const max = opts?.maxMs;
-  const delay =
-    min !== undefined && max !== undefined && max > min
-      ? min + Math.floor(Math.random() * (max - min + 1))
-      : (min ?? FETCH_DELAY_MS);
-  return new Promise((resolve) => setTimeout(resolve, delay));
+  return new Promise((resolve) => setTimeout(resolve, jitterDelay(opts)));
 }
 
 export type HarvestSummary = {

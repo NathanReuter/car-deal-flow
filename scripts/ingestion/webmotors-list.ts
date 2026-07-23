@@ -52,7 +52,9 @@ export async function warmWebmotorsContext(
   const context = await browser.newContext({ locale: "pt-BR" });
   const page = await context.newPage();
   await page.goto(WM_HOMEPAGE, { waitUntil: "domcontentloaded", timeout: 60_000 });
-  await page.waitForTimeout(3000);
+  // Jittered settle time — a constant wait is itself a bot tell, same rationale
+  // as the inter-request pacing.
+  await page.waitForTimeout(2500 + Math.floor(Math.random() * 2000));
   return { context, page };
 }
 
@@ -235,7 +237,9 @@ export async function listWebmotorsAds(options: {
   const byId = new Map<string, WmListCard>();
 
   let page = options.page;
-  let context: BrowserContext | null = null;
+  // Track the initial (pre-warmed) context too, so the first rotation closes it
+  // instead of orphaning it for the whole run. Null in tests (no browser).
+  let context: BrowserContext | null = options.browser ? options.page.context() : null;
   let pagesSinceWarm = 0;
   try {
     for (const keyword of queries) {

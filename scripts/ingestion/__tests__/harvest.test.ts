@@ -5,7 +5,7 @@ describe("parseHarvestSource", () => {
   it("accepts valid source names", () => {
     expect(parseHarvestSource("bradesco")).toBe("bradesco");
     expect(parseHarvestSource("vip")).toBe("vip");
-    expect(parseHarvestSource("facebook")).toBe("facebook");
+    expect(parseHarvestSource("storefronts")).toBe("storefronts");
   });
 
   it("rejects unknown source names", () => {

@@ -13,6 +13,7 @@ import { harvestSantanderLots } from "./santander-harvest";
 import { harvestOlxAds } from "./olx-harvest";
 import { harvestNapista } from "./napista-harvest";
 import { harvestWebmotors } from "./webmotors-harvest";
+import { WM_PACING, WM_ROTATE_EVERY_PAGES } from "./webmotors-list";
 import { harvestStorefronts } from "./storefront-harvest";
 
 export type HarvestSource =
@@ -271,8 +272,16 @@ export async function runHarvestSource(
     }
     case "webmotors": {
       // Self-contained: lists via its own Playwright+stealth JSON-API crawl.
+      // pacing/rotateEveryPages are the anti-bot levers (jittered inter-request
+      // delay + mid-run context rotation) — must be passed explicitly here since
+      // this is the actual production/cadence entrypoint; harvestWebmotors's own
+      // defaults only cover callers that omit the option entirely, but pacing's
+      // default is the *unjittered* fixed delay, so leaving it unset here would
+      // silently disable jittering on every real run.
       return harvestWebmotors({
         summaryOut: "/tmp/webmotors-harvest/write-summary.json",
+        pacing: WM_PACING,
+        rotateEveryPages: WM_ROTATE_EVERY_PAGES,
         ...common,
       });
     }

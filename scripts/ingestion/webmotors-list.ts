@@ -96,16 +96,25 @@ export function wmProxyForContext():
 export async function warmWebmotorsContext(
   browser: Browser,
 ): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ locale: "pt-BR", proxy: wmProxyForContext() });
-  // Cost control on metered residential proxies: the homepage warm-up is the
-  // only byte-heavy request (the JSON API pages are tiny). Aborting images and
-  // media cuts most warm-up traffic without touching the HTML, JS, CSS, fonts,
-  // or XHR the anti-bot sensor needs. Fonts stay loaded — negligible bytes, and
-  // a more browser-like fingerprint. NOTE: image-blocking is unverified against
-  // the live anti-bot (a homepage beacon can masquerade as an image), so A/B it
-  // on the first proxied run — WM_LOAD_IMAGES=1 (all loading) vs unset — and
-  // keep whichever clears more pages. WM_LOAD_IMAGES=1 disables blocking.
-  if (process.env.WM_LOAD_IMAGES !== "1" && typeof context.route === "function") {
+  const proxy = wmProxyForContext();
+  const context = await browser.newContext({ locale: "pt-BR", proxy });
+  // Cost control on metered residential proxies only: the homepage warm-up is
+  // the only byte-heavy request (the JSON API pages are tiny). Aborting images
+  // and media cuts most warm-up traffic without touching the HTML, JS, CSS,
+  // fonts, or XHR the anti-bot sensor needs. Fonts stay loaded — negligible
+  // bytes, and a more browser-like fingerprint.
+  //
+  // Gated on proxy being set so the free (direct) path stays fingerprint-
+  // identical to the pre-proxy baseline. Image-blocking is still unverified
+  // against the live anti-bot (a homepage beacon can masquerade as an image),
+  // so A/B it on the first proxied run — WM_LOAD_IMAGES=1 (all loading) vs
+  // unset — and keep whichever clears more pages. WM_LOAD_IMAGES=1 disables
+  // blocking even when a proxy is configured.
+  if (
+    proxy &&
+    process.env.WM_LOAD_IMAGES !== "1" &&
+    typeof context.route === "function"
+  ) {
     await context.route("**/*", (route) => {
       const type = route.request().resourceType();
       return type === "image" || type === "media" ? route.abort() : route.continue();

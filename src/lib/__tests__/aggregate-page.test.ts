@@ -570,18 +570,20 @@ describe("getBundlesPage", () => {
 
   // ── belowFipePctMin ───────────────────────────────────────────────────────
 
-  it("belowFipePctMin returns cars with asking price sufficiently below FIPE", async () => {
+  it("belowFipePctMin returns cars whose landed cost is sufficiently below FIPE", async () => {
     await seedGoal(ctx.prisma);
     await seedCars(ctx.prisma);
-    // Give one car a FIPE value so it qualifies for belowFipePctMin=20
-    // askingPrice <= fipeValue * (1 - 20/100) = fipeValue * 0.80
-    // car1: asking=100_000 → fipeValue must be >= 100_000 / 0.80 = 125_000
+    // Filter compares LANDED cost (ask + frete + auction fees) to FIPE.
+    // car1: Toyota, SP auction, ask 100_000 → landed = 100_000 + 1098 frete
+    //   + 5000 comissão + 1200 DETRAN + 1700 buffer = 108_998.
+    //   Needs landed <= fipe * 0.80 → fipe >= 136_248; 140_000 qualifies.
     const car1 = await ctx.prisma.car.findFirst({ where: { brand: "Toyota" } });
     await ctx.prisma.car.update({
       where: { id: car1!.id },
-      data: { fipeValueBRL: 130_000 }, // 100_000 <= 130_000 * 0.80 = 104_000 ✓
+      data: { fipeValueBRL: 140_000 }, // 108_998 <= 140_000 * 0.80 = 112_000 ✓
     });
-    // car2: asking=130_000, fipeValue=130_000 → 130_000 <= 130_000*0.80=104_000? NO
+    // car2: Hyundai, RJ market, ask 130_000 → landed = 130_000 + 1750 frete = 131_750.
+    //   131_750 <= 130_000 * 0.80 = 104_000? NO
     const car2 = await ctx.prisma.car.findFirst({ where: { brand: "Hyundai" } });
     await ctx.prisma.car.update({
       where: { id: car2!.id },
@@ -591,6 +593,22 @@ describe("getBundlesPage", () => {
     const result = await getBundlesPage({ belowFipePctMin: 20 }, ctx.prisma);
     expect(result.total).toBe(1);
     expect(result.rows[0].car.brand).toBe("Toyota");
+  });
+
+  it("belowFipePctMin excludes a car that clears the threshold on ask but not on landed", async () => {
+    await seedGoal(ctx.prisma);
+    await seedCars(ctx.prisma);
+    // car1: Toyota, SP auction, ask 100_000, fipe 130_000.
+    //   Ask alone: 100_000 <= 130_000 * 0.80 = 104_000 → would pass on lance.
+    //   Landed 108_998 > 104_000 → must NOT qualify once fees/frete count.
+    const car1 = await ctx.prisma.car.findFirst({ where: { brand: "Toyota" } });
+    await ctx.prisma.car.update({
+      where: { id: car1!.id },
+      data: { fipeValueBRL: 130_000 },
+    });
+
+    const result = await getBundlesPage({ belowFipePctMin: 20 }, ctx.prisma);
+    expect(result.total).toBe(0);
   });
 
   it("belowFipePctMin=0 with no FIPE values returns empty", async () => {

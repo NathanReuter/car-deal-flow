@@ -53,7 +53,9 @@ export function computeLandedCost(input: LandedCostInput): LandedCostResult {
   const detran = isAuction ? DETRAN_TRANSFER_SC_MID_BRL : 0;
   const buffer = isAuction ? POST_ARREMATE_BUFFER_BRL : 0;
 
-  const landed = ask + freight.freteBRL + commission + detran + buffer;
+  // Commission is a percentage of the lance, so the sum can be fractional;
+  // round to whole reais so budget compares and displays stay clean integers.
+  const landed = Math.round(ask + freight.freteBRL + commission + detran + buffer);
 
   return {
     landedCostBRL: landed,

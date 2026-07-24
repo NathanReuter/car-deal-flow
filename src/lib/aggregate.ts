@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { computeLandedCost } from "@/lib/cost/landedCost";
 import { computeDecision } from "@/lib/scoring/decision";
 import { computeGoalFit } from "@/lib/scoring/goalFit";
 import { computeMarketAssessment } from "@/lib/scoring/market";
@@ -287,33 +288,54 @@ export async function getBundlesPage(
     ];
   }
 
-  // belowFipePctMin: raw SQL to find IDs satisfying the cross-column constraint.
-  // SQLite does not support computed WHERE via Prisma, so we collect eligible IDs
-  // with $queryRaw and add them as an id-in filter.
+  // belowFipePctMin: keep only cars whose LANDED cost (ask + frete + auction
+  // fees) is at least `threshold`% below FIPE — matching the landed-based FIPE-Δ
+  // shown in the table. The raw SQL is a coarse prefilter: since landed ≥ ask,
+  // any car passing on landed also passes the ask-based bound, so the query
+  // returns a correct superset (and still scans only the relevant stage subset).
+  // The precise landed filter runs in JS because frete depends on city/state.
   if (params.belowFipePctMin !== undefined) {
     const threshold = params.belowFipePctMin;
-    // Apply the same stage constraint as the main where clause so the raw
-    // query scans only the relevant subset of rows (not the entire table).
-    let rows: { id: string }[];
+    type BelowFipeRow = {
+      id: string;
+      askingPriceBRL: number;
+      city: string;
+      state: string;
+      dealPhase: string | null;
+      fipeValueBRL: number | null;
+    };
+    let rows: BelowFipeRow[];
     if (params.stage) {
       const stage = params.stage;
-      rows = await db.$queryRaw<{ id: string }[]>`
-        SELECT id FROM Car
+      rows = await db.$queryRaw<BelowFipeRow[]>`
+        SELECT id, askingPriceBRL, city, state, dealPhase, fipeValueBRL FROM Car
         WHERE fipeValueBRL IS NOT NULL
           AND fipeValueBRL > 0
           AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
           AND pipelineStage = ${stage}
       `;
     } else {
-      rows = await db.$queryRaw<{ id: string }[]>`
-        SELECT id FROM Car
+      rows = await db.$queryRaw<BelowFipeRow[]>`
+        SELECT id, askingPriceBRL, city, state, dealPhase, fipeValueBRL FROM Car
         WHERE fipeValueBRL IS NOT NULL
           AND fipeValueBRL > 0
           AND askingPriceBRL <= fipeValueBRL * (1.0 - ${threshold} / 100.0)
           AND pipelineStage NOT IN (${PrismaRuntime.join(DEFAULT_HIDDEN_STAGES)})
       `;
     }
-    const eligibleIds = rows.map((r) => r.id);
+    const factor = 1 - threshold / 100;
+    const eligibleIds = rows
+      .filter((r) => {
+        if (r.fipeValueBRL == null || r.fipeValueBRL <= 0) return false;
+        const landed = computeLandedCost({
+          askingPriceBRL: r.askingPriceBRL,
+          dealPhase: r.dealPhase,
+          city: r.city,
+          state: r.state,
+        }).landedCostBRL;
+        return landed != null && landed <= r.fipeValueBRL * factor;
+      })
+      .map((r) => r.id);
     // Intersect with any existing id filter (none in base path)
     where.id = { in: eligibleIds };
   }

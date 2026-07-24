@@ -39,7 +39,11 @@ export const UF_CAPITAL: Record<string, string> = {
   AM: "manaus",
 };
 
-/** Regra prática band midpoints for UFs without a capital row. */
+/**
+ * Regra prática band midpoints for UFs without a capital row. The SHORT band is
+ * kept for reference/completeness — every southern UF (PR/RS) resolves via its
+ * capital and SC is local, so no UF currently maps to it.
+ */
 export const FREIGHT_BAND_SHORT_BRL = 1250; // mid(900, 1600)
 export const FREIGHT_BAND_MID_BRL = 2200; // mid(1600, 2800)
 export const FREIGHT_BAND_LONG_BRL = 4150; // mid(2800, 5500)

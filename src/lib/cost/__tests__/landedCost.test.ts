@@ -82,6 +82,19 @@ describe("computeLandedCost", () => {
     expect(r.landedCostBRL).toBe(92_750);
   });
 
+  it("rounds a fractional commission to whole reais", () => {
+    // 89990 * 0.05 = 4499.5 → landed must be an integer, not x.5
+    const r = computeLandedCost({
+      askingPriceBRL: 89_990,
+      dealPhase: "auction",
+      city: "Florianópolis",
+      state: "SC",
+    });
+    // 89990 + 0 frete + 4499.5 + 1200 + 1700 = 97389.5 → 97390
+    expect(r.landedCostBRL).toBe(97_390);
+    expect(Number.isInteger(r.landedCostBRL)).toBe(true);
+  });
+
   it("defaults undefined dealPhase to auction (legacy)", () => {
     const r = computeLandedCost({
       askingPriceBRL: 10_000,

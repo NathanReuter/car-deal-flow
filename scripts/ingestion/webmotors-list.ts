@@ -13,6 +13,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { randomBytes } from "node:crypto";
 import { chromium } from "playwright-extra";
 import type { Browser, BrowserContext, Page } from "playwright";
 import stealth from "puppeteer-extra-plugin-stealth";
@@ -75,7 +76,7 @@ export function wmProxyForContext():
   const server = process.env.WM_PROXY_SERVER;
   if (!server) return undefined;
   const rawUser = process.env.WM_PROXY_USERNAME;
-  const token = Math.random().toString(36).slice(2, 12);
+  const token = randomBytes(8).toString("hex");
   const username = rawUser?.includes("{session}")
     ? rawUser.replace(/\{session\}/g, token)
     : rawUser;
@@ -96,16 +97,18 @@ export function wmProxyForContext():
 export async function warmWebmotorsContext(
   browser: Browser,
 ): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ locale: "pt-BR", proxy: wmProxyForContext() });
+  const proxy = wmProxyForContext();
+  const context = await browser.newContext({ locale: "pt-BR", proxy });
   // Cost control on metered residential proxies: the homepage warm-up is the
   // only byte-heavy request (the JSON API pages are tiny). Aborting images and
-  // media cuts most warm-up traffic without touching the HTML, JS, CSS, fonts,
-  // or XHR the anti-bot sensor needs. Fonts stay loaded — negligible bytes, and
-  // a more browser-like fingerprint. NOTE: image-blocking is unverified against
-  // the live anti-bot (a homepage beacon can masquerade as an image), so A/B it
-  // on the first proxied run — WM_LOAD_IMAGES=1 (all loading) vs unset — and
-  // keep whichever clears more pages. WM_LOAD_IMAGES=1 disables blocking.
-  if (process.env.WM_LOAD_IMAGES !== "1" && typeof context.route === "function") {
+  // media cuts most warm-up traffic. Gated on the proxy being active so the
+  // proven free-path (direct-connection) fingerprint is never altered —
+  // bandwidth is only worth saving when it's metered. On the proxy path it
+  // defaults ON but is unverified against the live anti-bot (a homepage beacon
+  // can masquerade as an image), so A/B it with WM_LOAD_IMAGES=1 (loads
+  // everything) vs unset on the first proxied run, keeping whichever clears
+  // more pages.
+  if (proxy && process.env.WM_LOAD_IMAGES !== "1" && typeof context.route === "function") {
     await context.route("**/*", (route) => {
       const type = route.request().resourceType();
       return type === "image" || type === "media" ? route.abort() : route.continue();

@@ -216,6 +216,7 @@ async function harvestJsonSite(
       confidence: "medium",
       bodyType,
       mileageKm: item.mileageKm,
+      fipeValueBRL: item.fipeBRL,
       // Dedupe key: id-only path. The brand/model/year slug was previously
       // included but drifts if the site renames fields → re-inserts existing
       // cars. safeId is already sanitized in parseCompracertaItems (S3 guard).

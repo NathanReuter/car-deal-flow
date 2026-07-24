@@ -28,7 +28,19 @@ Platform: `Webmotors`, `sellerType: repasse`, `dealPhase: pre_repossession`.
   (3) `hasFinancingSignal` text gate rejects plain-sale ads without a
   financing-transfer phrase. Dealer stock cannot pass all three layers.
 - Anti-bot evasion (measured 2026-07-23): a fresh warm session clears ~6 API
-  pages before Cloudflare/PerimeterX returns 403. Two levers mitigate this:
+  pages before Cloudflare/PerimeterX returns 403. Runs **headful by default**
+  (`wmLaunchOptions`): the findings flagged headless-stealth as itself a likely
+  bot tell, and the harvest runs locally on a Mac with a real display. Set
+  `WM_HEADLESS=1` to force headless (e.g. a Linux server, where headful needs
+  xvfb). The IP-reputation ceiling is the dominant limiter, not fingerprint:
+  cookie/context rotation does **not** reset the IP, so once the source IP is
+  flagged (degrades within ~15min of heavy runs), rotate the IP. Set
+  `WM_PROXY_SERVER` (+ `WM_PROXY_USERNAME` / `WM_PROXY_PASSWORD`) to route each
+  context through a residential proxy; a literal `{session}` in the username is
+  replaced with a fresh token per warm-up, so every context rotation lands on a
+  new IP (`wmProxyForContext`). Unset ⇒ direct connection (free path: manual
+  phone-tether + airplane-mode roll, or let the IP cool). Two in-code levers
+  mitigate velocity:
   (1) **jittered pacing** — `throttleFetch({minMs,maxMs})` with `WM_PACING`
   (1.5–4s) instead of a constant interval; (2) **context rotation** — the list
   and harvest CLIs rotate the browser context (drop the session cookie +

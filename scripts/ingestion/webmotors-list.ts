@@ -42,14 +42,74 @@ export const WM_PACING = { minMs: 1500, maxMs: 4000 };
 export const WM_ROTATE_EVERY_PAGES = 5;
 
 /**
+ * Chromium launch options for the CLIs. Runs **headful by default**: the
+ * 2026-07-23 antibot findings flagged headless-stealth as itself a likely bot
+ * tell, and this project's harvest runs locally on a Mac with a real display.
+ * Set `WM_HEADLESS=1` to force headless (e.g. a Linux server, where headful
+ * needs xvfb). Unit tests inject their own Page and never hit launch, so this
+ * only affects real runs.
+ */
+export function wmLaunchOptions(): { headless: boolean } {
+  return { headless: process.env.WM_HEADLESS === "1" };
+}
+
+/**
+ * Per-context residential-proxy config, read from env (inert when unset). The
+ * 2026-07 findings identified IP reputation — not fingerprint — as the block
+ * ceiling: a healthy IP clears ~6 API pages, a degraded one clamps to ~1.
+ * Rotating the *cookie* alone doesn't help because it re-warms from the same
+ * IP; rotating the *IP* recovers instantly. So each warm-up mints a fresh
+ * proxy session, and since {@link warmWebmotorsContext} runs once at start and
+ * again on every context rotation, each rotation lands on a new residential IP.
+ *
+ *   WM_PROXY_SERVER    e.g. http://gate.provider.com:7000  (required to enable)
+ *   WM_PROXY_USERNAME  provider username; a literal `{session}` placeholder is
+ *                      replaced with a fresh token per call so sticky-session
+ *                      providers hand out a new IP each warm-up. Omit the
+ *                      placeholder for gateways that rotate per connection.
+ *   WM_PROXY_PASSWORD  provider password
+ */
+export function wmProxyForContext():
+  | { server: string; username?: string; password?: string }
+  | undefined {
+  const server = process.env.WM_PROXY_SERVER;
+  if (!server) return undefined;
+  const rawUser = process.env.WM_PROXY_USERNAME;
+  const token = Math.random().toString(36).slice(2, 12);
+  const username = rawUser?.includes("{session}")
+    ? rawUser.replace(/\{session\}/g, token)
+    : rawUser;
+  return {
+    server,
+    ...(username ? { username } : {}),
+    ...(process.env.WM_PROXY_PASSWORD ? { password: process.env.WM_PROXY_PASSWORD } : {}),
+  };
+}
+
+/**
  * Launch a fresh context and warm the homepage so PerimeterX/Cloudflare issue a
  * valid session cookie. Shared by the list + harvest CLIs and by mid-run context
  * rotation. `locale: pt-BR` matches the target market's expected fingerprint.
+ * When `WM_PROXY_SERVER` is set, the context routes through a fresh residential
+ * IP (see {@link wmProxyForContext}).
  */
 export async function warmWebmotorsContext(
   browser: Browser,
 ): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ locale: "pt-BR" });
+  const context = await browser.newContext({ locale: "pt-BR", proxy: wmProxyForContext() });
+  // Cost control on metered residential proxies: the homepage warm-up is the
+  // only byte-heavy request (the JSON API pages are tiny). Aborting images,
+  // media, and fonts cuts warm-up traffic ~50-70% without touching the HTML,
+  // JS, CSS, or XHR the anti-bot sensor needs. Set WM_LOAD_IMAGES=1 to load
+  // everything if a lean fingerprint ever becomes a detection tell.
+  if (process.env.WM_LOAD_IMAGES !== "1" && typeof context.route === "function") {
+    await context.route("**/*", (route) => {
+      const type = route.request().resourceType();
+      return type === "image" || type === "media" || type === "font"
+        ? route.abort()
+        : route.continue();
+    });
+  }
   const page = await context.newPage();
   await page.goto(WM_HOMEPAGE, { waitUntil: "domcontentloaded", timeout: 60_000 });
   // Jittered settle time — a constant wait is itself a bot tell, same rationale
@@ -329,7 +389,7 @@ function parseArgs(argv: string[]) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(wmLaunchOptions());
   try {
     const { page } = await warmWebmotorsContext(browser);
 

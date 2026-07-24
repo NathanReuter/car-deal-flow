@@ -54,6 +54,9 @@ async function syncOne(car: DbCar): Promise<FipeSyncResult> {
 export async function syncFipeValue(carId: string): Promise<FipeSyncResult> {
   const car = await prisma.car.findUnique({ where: { id: carId } });
   if (!car) return { ok: false, error: "Car not found." };
+  if (car.pipelineStage === "rejected") {
+    return { ok: false, carId, error: "Car is rejected — FIPE sync is disabled for rejected leads." };
+  }
 
   const result = await syncOne(car);
   revalidatePath(`/cars/${carId}`);
@@ -62,7 +65,7 @@ export async function syncFipeValue(carId: string): Promise<FipeSyncResult> {
 }
 
 export async function syncAllFipeValues(): Promise<FipeSyncResult[]> {
-  const cars = await prisma.car.findMany();
+  const cars = await prisma.car.findMany({ where: { pipelineStage: { not: "rejected" } } });
 
   // Sequential — stays under FIPE free-tier rate limits and keeps per-car errors clear.
   const results: FipeSyncResult[] = [];

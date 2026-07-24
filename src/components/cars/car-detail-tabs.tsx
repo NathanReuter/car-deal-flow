@@ -259,7 +259,13 @@ export function CarDetailTabs({ bundle }: { bundle: CarBundle }) {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Market &amp; valuation</CardTitle>
-            <Button variant="secondary" size="sm" disabled={isPending} onClick={handleSync}>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={isPending || car.pipelineStage === "rejected"}
+              title={car.pipelineStage === "rejected" ? "FIPE sync is disabled for rejected leads." : undefined}
+              onClick={handleSync}
+            >
               <RefreshCw className={isPending ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
               {isPending ? "Syncing..." : "Sync from FIPE"}
             </Button>

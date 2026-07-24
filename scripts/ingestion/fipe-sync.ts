@@ -40,6 +40,13 @@ export async function syncMissingFipe(prisma: PrismaClient): Promise<{ synced: n
 
   let synced = 0;
   let failed = 0;
+  // The FIPE API's daily quota resets on its own schedule (hours, not seconds);
+  // once it's exhausted every remaining request fails identically. Grinding
+  // through the rest of the backlog wastes time and (via installCachedFetch)
+  // just replays the same cached 429. Bail after a run of consecutive 429s
+  // instead of exhausting the whole car list.
+  const RATE_LIMIT_STREAK_LIMIT = 3;
+  let rateLimitStreak = 0;
   for (const car of cars) {
     const label = `${car.brand} ${car.model} ${car.modelYear || car.year}`;
     try {
@@ -52,11 +59,23 @@ export async function syncMissingFipe(prisma: PrismaClient): Promise<{ synced: n
       });
       await prisma.car.update({ where: { id: car.id }, data: { fipeValueBRL: match.valueBRL } });
       synced += 1;
+      rateLimitStreak = 0;
       console.log(`OK  ${label} → R$${match.valueBRL}`);
     } catch (e) {
       failed += 1;
       const msg = e instanceof FipeError ? e.message : e instanceof Error ? e.message : String(e);
       console.log(`ERR ${label} — ${msg}`);
+      if (msg.includes("(429)")) {
+        rateLimitStreak += 1;
+        if (rateLimitStreak >= RATE_LIMIT_STREAK_LIMIT) {
+          console.log(
+            `FIPE sync aborted: rate-limited (429) ${rateLimitStreak}x in a row — API quota is exhausted, stopping early.`,
+          );
+          break;
+        }
+      } else {
+        rateLimitStreak = 0;
+      }
     }
     await sleep(400);
   }

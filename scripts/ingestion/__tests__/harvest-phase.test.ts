@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { parseHarvestPhase, parseHarvestSource, sourcesForPhase, PHASE_SOURCES } from "../harvest";
 
 describe("harvest phase selection", () => {
-  it("maps pre → olx + webmotors, auction → the five auction sources, market → napista + storefronts", () => {
+  it("maps pre → olx + webmotors, auction → the five auction sources, market → napista + storefronts + facebook", () => {
     expect(sourcesForPhase("pre")).toEqual(["olx", "webmotors"]);
     expect(sourcesForPhase("auction")).toEqual([
       "bradesco",
@@ -11,7 +11,7 @@ describe("harvest phase selection", () => {
       "mgl",
       "santander",
     ]);
-    expect(sourcesForPhase("market")).toEqual(["napista", "storefronts"]);
+    expect(sourcesForPhase("market")).toEqual(["napista", "storefronts", "facebook"]);
   });
 
   it("all = auction + pre + market sources with no duplicates", () => {
@@ -36,6 +36,7 @@ describe("harvest phase selection", () => {
     expect(parseHarvestSource("webmotors")).toBe("webmotors");
     expect(parseHarvestSource("napista")).toBe("napista");
     expect(parseHarvestSource("storefronts")).toBe("storefronts");
+    expect(parseHarvestSource("facebook")).toBe("facebook");
     expect(() => parseHarvestSource("nope")).toThrow(/Invalid --source/);
     expect(parseHarvestPhase("pre")).toBe("pre");
     expect(() => parseHarvestPhase("both")).toThrow(/Invalid --phase/);
@@ -43,7 +44,7 @@ describe("harvest phase selection", () => {
 
   it("parseHarvestPhase accepts 'market' and PHASE_SOURCES.market carries the market sources", () => {
     expect(parseHarvestPhase("market")).toBe("market");
-    expect(PHASE_SOURCES.market).toEqual(["napista", "storefronts"]);
+    expect(PHASE_SOURCES.market).toEqual(["napista", "storefronts", "facebook"]);
   });
 
   it("invalid --phase error message lists all 4 valid options", () => {

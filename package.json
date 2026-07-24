@@ -18,6 +18,7 @@
     "harvest:webmotors": "tsx scripts/ingestion/harvest.ts --source webmotors",
     "harvest:napista": "tsx scripts/ingestion/harvest.ts --source napista",
     "harvest:storefronts": "tsx scripts/ingestion/harvest.ts --source storefronts",
+    "harvest:facebook": "tsx scripts/ingestion/harvest.ts --source facebook",
     "harvest:pre": "tsx scripts/ingestion/harvest.ts --phase pre",
     "harvest:auction": "tsx scripts/ingestion/harvest.ts --phase auction",
     "harvest:market": "tsx scripts/ingestion/harvest.ts --phase market",

@@ -15,6 +15,10 @@ import { harvestNapista } from "./napista-harvest";
 import { harvestWebmotors } from "./webmotors-harvest";
 import { WM_PACING, WM_ROTATE_EVERY_PAGES } from "./webmotors-list";
 import { harvestStorefronts } from "./storefront-harvest";
+import {
+  DEFAULT_FACEBOOK_WRITE_LIMIT,
+  harvestFacebookMarketplace,
+} from "./facebook-marketplace-harvest";
 
 export type HarvestSource =
   | "bradesco"
@@ -25,20 +29,22 @@ export type HarvestSource =
   | "olx"
   | "webmotors"
   | "napista"
-  | "storefronts";
+  | "storefronts"
+  | "facebook";
 
 export type HarvestPhase = "pre" | "auction" | "market" | "all";
 
 /**
  * Sources by deal phase.
  * - pre: pre-repossession repasse ads (owner assuming financing) — OLX, Webmotors.
- * - market: dealer/classified stock sold outright (often below FIPE) — NaPista, storefronts.
+ * - market: dealer/classified stock sold outright (often below FIPE) — NaPista,
+ *   storefronts, Facebook Marketplace (goal-biased).
  * - auction: post-repossession lots.
  */
 export const PHASE_SOURCES: Record<Exclude<HarvestPhase, "all">, HarvestSource[]> = {
   auction: ["bradesco", "vip", "bidchain", "mgl", "santander"],
   pre: ["olx", "webmotors"],
-  market: ["napista", "storefronts"],
+  market: ["napista", "storefronts", "facebook"],
 };
 
 export function sourcesForPhase(phase: HarvestPhase): HarvestSource[] {
@@ -342,6 +348,17 @@ export async function runHarvestSource(
         summaryOut: "/tmp/storefronts-harvest/write-summary.json",
       });
       return mergeSummaries("storefronts", summaries);
+    }
+    case "facebook": {
+      // Goal-biased Marketplace via RapidAPI (market + financing queries).
+      return harvestFacebookMarketplace({
+        summaryOut: "/tmp/facebook-marketplace-harvest/write-summary.json",
+        fromGoal: true,
+        allowMarketFallback: true,
+        limit: options.limit ?? DEFAULT_FACEBOOK_WRITE_LIMIT,
+        dryRun: options.dryRun,
+        applyGoalFilter: options.applyGoalFilter,
+      });
     }
     default:
       throw new Error(`Unknown source: ${source satisfies never}`);

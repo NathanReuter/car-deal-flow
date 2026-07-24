@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { planCommands } from "../run-cadence";
 
 describe("planCommands", () => {
-  it("on Monday plans olx+vip+bradesco+napista+webmotors harvests then the shared chain", () => {
+  it("on Monday plans olx+vip+bradesco+napista+webmotors+facebook harvests then the shared chain", () => {
     const names = planCommands(new Date(2026, 6, 13)).map((c) => c.name); // Mon
     expect(names).toEqual([
       "harvest:olx",
@@ -10,6 +10,7 @@ describe("planCommands", () => {
       "harvest:bradesco",
       "harvest:napista",
       "harvest:webmotors",
+      "harvest:facebook",
       "cleanup",
       "fipe-sync",
       "goal-filter",
@@ -17,11 +18,12 @@ describe("planCommands", () => {
     ]);
   });
 
-  it("on Saturday plans olx+napista plus the chain", () => {
+  it("on Saturday plans olx+napista+facebook plus the chain", () => {
     const names = planCommands(new Date(2026, 6, 18)).map((c) => c.name); // Sat
     expect(names).toEqual([
       "harvest:olx",
       "harvest:napista",
+      "harvest:facebook",
       "cleanup",
       "fipe-sync",
       "goal-filter",
@@ -29,13 +31,14 @@ describe("planCommands", () => {
     ]);
   });
 
-  it("on Tuesday plans olx+mgl+napista+storefronts harvests then the shared chain", () => {
+  it("on Tuesday plans olx+mgl+napista+storefronts+facebook harvests then the shared chain", () => {
     const names = planCommands(new Date(2026, 6, 14)).map((c) => c.name); // Tue
     expect(names).toEqual([
       "harvest:olx",
       "harvest:mgl",
       "harvest:napista",
       "harvest:storefronts",
+      "harvest:facebook",
       "cleanup",
       "fipe-sync",
       "goal-filter",

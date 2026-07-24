@@ -3,6 +3,7 @@ import {
   buildTopPicksReport,
   detectTargetModel,
   isTopPickEligible,
+  toTopPick,
   type TopPicksCar,
   type TopPicksGoal,
 } from "../lib/top-picks";
@@ -40,6 +41,8 @@ function car(over: Partial<TopPicksCar> = {}): TopPicksCar {
     installmentsRemaining: null,
     outstandingDebtBRL: null,
     fipeValueBRL: 105741,
+    city: "Florianópolis",
+    state: "SC",
     bodyType: "suv",
     mileageKm: 35902,
     pipelineStage: "new_lead",
@@ -49,6 +52,31 @@ function car(over: Partial<TopPicksCar> = {}): TopPicksCar {
     ...over,
   };
 }
+
+describe("toTopPick landed cash cost", () => {
+  it("ranks using landed cash (GO auction costs more than SC market at same ask)", () => {
+    const goAuction = car({
+      id: "go",
+      askingPriceBRL: 80000,
+      dealPhase: "auction",
+      city: "Goiânia",
+      state: "GO",
+      fipeValueBRL: 150000,
+    });
+    const scMarket = car({
+      id: "sc",
+      askingPriceBRL: 80000,
+      dealPhase: "market",
+      city: "Florianópolis",
+      state: "SC",
+      fipeValueBRL: 150000,
+    });
+    const a = toTopPick(goAuction, goal)!;
+    const b = toTopPick(scMarket, goal)!;
+    expect(a.cashCostBRL).toBeGreaterThan(b.cashCostBRL);
+    expect(b.cashCostBRL).toBe(80000); // SC market: frete 0, no auction fees
+  });
+});
 
 describe("detectTargetModel", () => {
   it("maps core and lottery keys", () => {

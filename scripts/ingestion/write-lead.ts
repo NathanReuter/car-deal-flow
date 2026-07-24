@@ -106,6 +106,10 @@ export interface WriteLeadInput {
   /** Required for auction leads. For pre_repossession leads it is DERIVED
    * (entrada + saldo devedor) and must not be supplied. */
   askingPriceBRL?: number;
+  /** FIPE table value, when the source page already discloses it (e.g. Compra
+   * Certa's `fipe` field). Never derived/estimated here — only pass a value
+   * the source stated outright. Skips a redundant fipe-sync.ts API call. */
+  fipeValueBRL?: number | null;
   /** Defaults to "auction". */
   dealPhase?: DealPhase;
   // Repasse economics — pre_repossession only. null = ad did not disclose.
@@ -446,6 +450,8 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     mileageKm = null;
   }
 
+  const fipeValueBRL = optionalMoney(input.fipeValueBRL, "fipeValueBRL");
+
   const trim = input.trim?.trim() ?? "";
   const modelYear = input.modelYear ?? year;
   const city = input.city?.trim() || "Unknown";
@@ -523,6 +529,9 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
         // Keep primary platform as first-wins; still refresh listing scalars.
         sourcePlatform: existingByUrl.sourcePlatform,
         notes,
+        // Fill-if-missing: don't clobber a value fipe-sync.ts already resolved
+        // with null just because this re-harvest's source doesn't disclose one.
+        ...(existingByUrl.fipeValueBRL == null && fipeValueBRL !== null ? { fipeValueBRL } : {}),
         ...(canResetStage ? { pipelineStage: "new_lead", stageReason: null } : {}),
       },
     });
@@ -583,6 +592,11 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
     mergeScalar("mileageKm", "mileage", mileageKm);
     if (plateProvided) mergeScalar("plate", "plate", plate!);
     if (chassisProvided) mergeScalar("chassis", "chassis", chassis!);
+    // FIPE value drifts month to month across sources, so fill-if-missing only
+    // — no disagreement note (that's expected, not a data-quality issue).
+    if (fipeValueBRL !== null && mergeTarget.fipeValueBRL == null) {
+      scalarPatch.fipeValueBRL = fipeValueBRL;
+    }
     mergeScalar("color", "color", color);
     // Price / year / body often differ across houses — note only, keep first.
     if (mergeTarget.askingPriceBRL !== askingPriceBRL) {
@@ -641,7 +655,7 @@ export async function writeLead(prisma: PrismaClient, input: WriteLeadInput): Pr
       notes,
       pipelineStage: "new_lead",
       stageReason: null,
-      fipeValueBRL: null,
+      fipeValueBRL,
     },
   });
 

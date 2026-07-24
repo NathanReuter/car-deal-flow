@@ -4,6 +4,7 @@ import {
   formatDamageRejection,
 } from "@/lib/filters/damageSignals";
 import { findDiscontinuedRisk } from "@/lib/filters/discontinuedRisk";
+import { classifyCretaTechTrim } from "@/lib/filters/cretaTechTrim";
 import { computeLandedCost } from "@/lib/cost/landedCost";
 
 // Each criterion contributes equal weight to the fit score; a hard-excluded
@@ -13,10 +14,19 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
   const failed: string[] = [];
 
   const excluded = goal.excludedBrandsModels.some((entry) => {
-    const normalized = entry.toLowerCase();
+    const normalized = entry.toLowerCase().trim();
+    const brand = car.brand.toLowerCase();
+    const model = car.model.toLowerCase();
+    const full = `${brand} ${model}`;
+    // "Jeep Renegade" matches "jeep renegade" and "jeep renegade longitude";
+    // bare "Tracker" matches model "tracker" / "tracker lt".
     return (
-      normalized === car.brand.toLowerCase() ||
-      normalized === `${car.brand} ${car.model}`.toLowerCase()
+      normalized === brand ||
+      normalized === full ||
+      full === normalized ||
+      full.startsWith(`${normalized} `) ||
+      model === normalized ||
+      model.startsWith(`${normalized} `)
     );
   });
 
@@ -56,6 +66,32 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
       matchedCriteria: [],
       failedCriteria: failed,
       explanation: `Listing shows damage/sinistro signals (${damage.reasons.join(", ")}). Only integral/conservado inventory is wanted.`,
+    };
+  }
+
+  // Creta Action = hard reject (no CarPlay). Unknown Creta trim = soft park
+  // (score 40) until Comfort+/Limited+/Platinum+ is confirmed from listing.
+  const cretaTech = classifyCretaTechTrim(car.brand, car.model, car.trim, car.notes);
+  if (cretaTech?.status === "blocked") {
+    failed.push(cretaTech.reason);
+    return {
+      carId: car.id,
+      goalId: goal.id,
+      score: 0,
+      matchedCriteria: [],
+      failedCriteria: failed,
+      explanation: cretaTech.reason,
+    };
+  }
+  if (cretaTech?.status === "unknown") {
+    failed.push(cretaTech.reason);
+    return {
+      carId: car.id,
+      goalId: goal.id,
+      score: 40,
+      matchedCriteria: [],
+      failedCriteria: failed,
+      explanation: cretaTech.reason,
     };
   }
 

@@ -23,6 +23,7 @@
     "harvest:market": "tsx scripts/ingestion/harvest.ts --phase market",
     "cleanup:expired": "tsx scripts/ingestion/post-harvest-cleanup.ts",
     "goal:filter": "tsx scripts/ingestion/apply-goal-filter.ts",
+    "top-picks": "tsx scripts/ingestion/top-picks.ts",
     "cadence": "tsx scripts/ingestion/run-cadence.ts",
     "cadence:dry": "tsx scripts/ingestion/run-cadence.ts --dry-run",
     "cadence:install": "bash scripts/install-cadence-cron.sh",

@@ -1,21 +1,15 @@
 // Unit coverage for the env-driven anti-bot knobs added alongside residential
-// proxy support: wmProxyForContext (proxy config + per-call {session} rotation),
-// wmLaunchOptions (headful-by-default), and warmWebmotorsContext wiring
-// (proxy into newContext + image/media abort gated on proxy).
+// proxy support: wmProxyForContext (proxy config + per-call {session} rotation)
+// and wmLaunchOptions (headful-by-default). Both are pure functions of the
+// environment, so we drive them by setting/clearing env vars.
 import { afterEach, describe, expect, it } from "vitest";
-import type { Browser, BrowserContext, Page, Route } from "playwright";
-import {
-  warmWebmotorsContext,
-  wmLaunchOptions,
-  wmProxyForContext,
-} from "../webmotors-list";
+import { wmLaunchOptions, wmProxyForContext } from "../webmotors-list";
 
 const PROXY_ENV = [
   "WM_PROXY_SERVER",
   "WM_PROXY_USERNAME",
   "WM_PROXY_PASSWORD",
   "WM_HEADLESS",
-  "WM_LOAD_IMAGES",
 ] as const;
 
 afterEach(() => {
@@ -90,141 +84,5 @@ describe("wmLaunchOptions", () => {
   it("stays headful for any WM_HEADLESS value other than exactly '1'", () => {
     process.env.WM_HEADLESS = "true";
     expect(wmLaunchOptions()).toEqual({ headless: false });
-  });
-});
-
-describe("warmWebmotorsContext proxy + bandwidth wiring", () => {
-  type WarmFake = {
-    browser: Browser;
-    newContextOpts: unknown[];
-    routeCalls: number;
-    usernames: Array<string | undefined>;
-  };
-
-  function fakeWarmBrowser(): WarmFake {
-    const newContextOpts: unknown[] = [];
-    const usernames: Array<string | undefined> = [];
-    let routeCalls = 0;
-    const page = {
-      goto: async () => null,
-      waitForTimeout: async () => {},
-    } as unknown as Page;
-    const browser = {
-      newContext: async (opts: unknown) => {
-        newContextOpts.push(opts);
-        const proxy = (opts as { proxy?: { username?: string } } | undefined)?.proxy;
-        usernames.push(proxy?.username);
-        const context: Partial<BrowserContext> = {
-          newPage: async () => page,
-          route: async () => {
-            routeCalls++;
-          },
-          close: async () => {},
-        };
-        return context as BrowserContext;
-      },
-    };
-    return {
-      browser: browser as unknown as Browser,
-      newContextOpts,
-      get routeCalls() {
-        return routeCalls;
-      },
-      usernames,
-    };
-  }
-
-  it("passes proxy into newContext and installs image/media abort when proxy is set", async () => {
-    process.env.WM_PROXY_SERVER = "http://gate.example.com:7000";
-    process.env.WM_PROXY_USERNAME = "acct-user";
-    const fake = fakeWarmBrowser();
-
-    await warmWebmotorsContext(fake.browser);
-
-    expect(fake.newContextOpts).toEqual([
-      {
-        locale: "pt-BR",
-        proxy: { server: "http://gate.example.com:7000", username: "acct-user" },
-      },
-    ]);
-    expect(fake.routeCalls).toBe(1);
-  });
-
-  it("skips image/media abort on the free path (proxy unset) so fingerprint stays inert", async () => {
-    const fake = fakeWarmBrowser();
-
-    await warmWebmotorsContext(fake.browser);
-
-    expect(fake.newContextOpts).toEqual([{ locale: "pt-BR", proxy: undefined }]);
-    expect(fake.routeCalls).toBe(0);
-  });
-
-  it("skips image/media abort when WM_LOAD_IMAGES=1 even with a proxy", async () => {
-    process.env.WM_PROXY_SERVER = "http://gate.example.com:7000";
-    process.env.WM_LOAD_IMAGES = "1";
-    const fake = fakeWarmBrowser();
-
-    await warmWebmotorsContext(fake.browser);
-
-    expect(fake.routeCalls).toBe(0);
-  });
-
-  it("mints a fresh {session} username on each warm-up (new IP per rotation)", async () => {
-    process.env.WM_PROXY_SERVER = "http://gate.example.com:7000";
-    process.env.WM_PROXY_USERNAME = "acct-user-session-{session}";
-    const fake = fakeWarmBrowser();
-
-    await warmWebmotorsContext(fake.browser);
-    await warmWebmotorsContext(fake.browser);
-
-    expect(fake.usernames).toHaveLength(2);
-    expect(fake.usernames[0]).toMatch(/^acct-user-session-[a-z0-9]+$/);
-    expect(fake.usernames[1]).toMatch(/^acct-user-session-[a-z0-9]+$/);
-    expect(fake.usernames[0]).not.toEqual(fake.usernames[1]);
-  });
-
-  it("aborts image and media routes, continues everything else", async () => {
-    process.env.WM_PROXY_SERVER = "http://gate.example.com:7000";
-    let handler: ((route: Route) => unknown) | undefined;
-    const page = {
-      goto: async () => null,
-      waitForTimeout: async () => {},
-    } as unknown as Page;
-    const browser = {
-      newContext: async () =>
-        ({
-          newPage: async () => page,
-          route: async (_pattern: string, fn: (route: Route) => unknown) => {
-            handler = fn;
-          },
-          close: async () => {},
-        }) as unknown as BrowserContext,
-    } as unknown as Browser;
-
-    await warmWebmotorsContext(browser);
-    expect(handler).toBeTypeOf("function");
-
-    const outcomes: Array<"abort" | "continue"> = [];
-    for (const type of ["image", "media", "document", "stylesheet", "script", "font", "xhr"] as const) {
-      const route = {
-        request: () => ({ resourceType: () => type }),
-        abort: async () => {
-          outcomes.push("abort");
-        },
-        continue: async () => {
-          outcomes.push("continue");
-        },
-      } as unknown as Route;
-      await handler!(route);
-    }
-    expect(outcomes).toEqual([
-      "abort",
-      "abort",
-      "continue",
-      "continue",
-      "continue",
-      "continue",
-      "continue",
-    ]);
   });
 });

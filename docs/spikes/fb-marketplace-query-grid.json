@@ -1,0 +1,583 @@
+{
+  "locations": [
+    {
+      "query": "Veiculos",
+      "location": "Florianopolis",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 4,
+      "price_in_title": 9,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$10.000'",
+        "'R$96.900' / '2023 Volkswagen t-cross 1.0 200 tsi total fle'"
+      ]
+    },
+    {
+      "query": "Veiculos",
+      "location": "Florianopolis, SC",
+      "http": 200,
+      "n": 10,
+      "br_price": 0,
+      "us_price": 9,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 0,
+      "samples": [
+        "'US$1.500' / '2019 Volkswagen golf gti Rabbit Edition Hatch'",
+        "'US$3.900' / '2012 Ford Escape XLT Sport SUV 4D'"
+      ]
+    },
+    {
+      "query": "Veiculos",
+      "location": "Sao Jose",
+      "http": 200,
+      "n": 10,
+      "br_price": 0,
+      "us_price": 9,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 0,
+      "samples": [
+        "'US$1.500' / '2019 Volkswagen golf gti Rabbit Edition Hatch'",
+        "'US$3.900' / '2012 Ford Escape XLT Sport SUV 4D'"
+      ]
+    },
+    {
+      "query": "Veiculos",
+      "location": "Sao Jose, SC",
+      "http": 200,
+      "n": 10,
+      "br_price": 0,
+      "us_price": 9,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 0,
+      "samples": [
+        "'US$1.500' / '2019 Volkswagen golf gti Rabbit Edition Hatch'",
+        "'US$3.900' / '2012 Ford Escape XLT Sport SUV 4D'"
+      ]
+    },
+    {
+      "query": "Veiculos",
+      "location": "Joinville",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 8,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$10.000'",
+        "'R$50.000' / '2021 Toyota corolla altis 1.8 híbrido'"
+      ]
+    },
+    {
+      "query": "Veiculos",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 2,
+      "repasse_hint": 0,
+      "price_in_title": 9,
+      "samples": [
+        "'R$46.900' / '2016 Hyundai HB20'",
+        "'R$19.990' / '2010 Renault'"
+      ]
+    },
+    {
+      "query": "Veiculos",
+      "location": "Porto Alegre",
+      "http": 200,
+      "n": 10,
+      "br_price": 0,
+      "us_price": 9,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 0,
+      "samples": [
+        "'US$1.500' / '2019 Volkswagen golf gti Rabbit Edition Hatch'",
+        "'US$3.900' / '2012 Ford Escape XLT Sport SUV 4D'"
+      ]
+    },
+    {
+      "query": "Veiculos",
+      "location": "Sao Paulo",
+      "http": 200,
+      "n": 10,
+      "br_price": 0,
+      "us_price": 9,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 0,
+      "samples": [
+        "'US$1.500' / '2019 Volkswagen golf gti Rabbit Edition Hatch'",
+        "'US$3.900' / '2012 Ford Escape XLT Sport SUV 4D'"
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "query": "Veiculos",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 2,
+      "repasse_hint": 0,
+      "price_in_title": 9,
+      "samples": [
+        "'R$46.900' / '2016 Hyundai HB20'",
+        "'R$19.990' / '2010 Renault'"
+      ]
+    },
+    {
+      "query": "veiculos",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 2,
+      "repasse_hint": 0,
+      "price_in_title": 9,
+      "samples": [
+        "'R$46.900' / '2016 Hyundai HB20'",
+        "'R$19.990' / '2010 Renault'"
+      ]
+    },
+    {
+      "query": "carro",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 8,
+      "samples": [
+        "'R$12.000' / '2012 Fiesta 1.0 carro esta bom'",
+        "'R$976' / '2009 FIAT 🚨🔥 chegou a sua chance de sair de c'"
+      ]
+    },
+    {
+      "query": "carros",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 1,
+      "sc_hint": 1,
+      "repasse_hint": 1,
+      "price_in_title": 9,
+      "samples": [
+        "'R$599' / '2007 Ford ka 2007 com direÇÃo hidrÁulica'",
+        "'R$1.000' / 'Tenho dois 2⃣ carros pra troca'"
+      ]
+    },
+    {
+      "query": "automovel",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 10,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 10,
+      "samples": [
+        "'R$599' / '2007 Ford ka 2007 com direÇÃo hidrÁulica'",
+        "'R$1' / 'CARTAS CONTEMPLADA - AUTOMÓVEL E IMÓVEL'"
+      ]
+    },
+    {
+      "query": "auto",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 9,
+      "samples": [
+        "'R$1' / 'CARTA CONTEMPLADA - IMÓVEL, AUTO, PEDADOS…'",
+        "'Gratuito' / 'Auto escola'"
+      ]
+    },
+    {
+      "query": "Gol",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 7,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 7,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$14.500'",
+        "'R$7.000' / '1999 Volkswagen Gol'"
+      ]
+    },
+    {
+      "query": "Onix",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 10,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 10,
+      "samples": [
+        "'R$51' / '2019 Chevrolet Onix'",
+        "'R$48.900' / '2019 Chevrolet Onix'"
+      ]
+    },
+    {
+      "query": "Polo",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 4,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 4,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$39'",
+        "'R$69.000' / '2025 Volkswagen Polo'"
+      ]
+    },
+    {
+      "query": "HB20",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 7,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 7,
+      "samples": [
+        "'R$59.000' / '2021 Hyundai HB20'",
+        "'Acabou de ser anunciado' / 'R$45.900'"
+      ]
+    },
+    {
+      "query": "Fiat",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 8,
+      "samples": [
+        "'R$48.000' / '2018 FIAT Argo'",
+        "'R$32.500' / '2009 FIAT Palio'"
+      ]
+    },
+    {
+      "query": "Volkswagen",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 8,
+      "samples": [
+        "'R$26.900' / '2013 Volkswagen Gol'",
+        "'Acabou de ser anunciado' / 'R$38.000'"
+      ]
+    },
+    {
+      "query": "Chevrolet",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 8,
+      "samples": [
+        "'R$10.900' / '2004 Chevrolet Corsa'",
+        "'Acabou de ser anunciado' / 'R$15.000'"
+      ]
+    },
+    {
+      "query": "repasse",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 6,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 2,
+      "price_in_title": 6,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$15.900'",
+        "'R$10.300' / '2005 Volkswagen fox 1.0 - repasse'"
+      ]
+    },
+    {
+      "query": "financiado",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 6,
+      "us_price": 0,
+      "sc_hint": 1,
+      "repasse_hint": 10,
+      "price_in_title": 6,
+      "samples": [
+        "'R$500' / 'Apartamento financiado minha casa minha vida '",
+        "'R$1' / '2026 Carros 100% financiado , sem CNH score b'"
+      ]
+    },
+    {
+      "query": "financiamento",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 7,
+      "us_price": 0,
+      "sc_hint": 2,
+      "repasse_hint": 7,
+      "price_in_title": 7,
+      "samples": [
+        "'R$54.999' / 'PRA ASSUMIR FINANCIAMENTO'",
+        "'R$6.000' / 'Vendo ou troco moto para assumir financiament'"
+      ]
+    },
+    {
+      "query": "assumo financiamento",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 6,
+      "price_in_title": 7,
+      "samples": [
+        "'R$1.600' / 'Assumo financiamento de carro até 1600 por mê'",
+        "'R$1.000' / '**NAO TO PEDINDO ENTRADA ALTA, PRA ASSUMIR DI'"
+      ]
+    },
+    {
+      "query": "passo financiamento",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 10,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 4,
+      "price_in_title": 10,
+      "samples": [
+        "'R$10.000' / '2014 FIAT Palio'",
+        "'R$28.900' / '2018 Renault kwid zen 1.0 3cc'"
+      ]
+    },
+    {
+      "query": "transferir financiamento",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 8,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$25.500'",
+        "'R$39.990' / '2013 Honda outro'"
+      ]
+    },
+    {
+      "query": "quitar",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 10,
+      "us_price": 0,
+      "sc_hint": 1,
+      "repasse_hint": 0,
+      "price_in_title": 10,
+      "samples": [
+        "'R$70R$100' / 'R$70'",
+        "'R$20' / 'Revista Guitar Player'"
+      ]
+    },
+    {
+      "query": "venda",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 1,
+      "repasse_hint": 0,
+      "price_in_title": 9,
+      "samples": [
+        "'R$90.000' / 'Vendo casa 90 mil de entrada o restante no co'",
+        "'R$20.000' / 'Entrada 20mil - Apartamento à venda em Araucá'"
+      ]
+    },
+    {
+      "query": "usado",
+      "location": "Curitiba",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 0,
+      "price_in_title": 9,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$1.000'",
+        "'R$350' / '🚨 DESAPEGO – GUARDA-ROUPA USADO🚨'"
+      ]
+    }
+  ],
+  "cross": [
+    {
+      "query": "financiado",
+      "location": "Florianopolis",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 3,
+      "repasse_hint": 8,
+      "price_in_title": 9,
+      "samples": [
+        "'R$39.900' / '2020 Renault oroch já financiado'",
+        "'R$12.000' / '2018 HB20 1.0 Comf. Completo ‼️assumir financ'"
+      ]
+    },
+    {
+      "query": "financiamento",
+      "location": "Florianopolis",
+      "http": 200,
+      "n": 10,
+      "br_price": 9,
+      "us_price": 0,
+      "sc_hint": 6,
+      "repasse_hint": 7,
+      "price_in_title": 9,
+      "samples": [
+        "'R$10.000' / 'Florianópolis, SC'",
+        "'R$1.999' / '2009 ✅GOLF FINANCIAMENTO PARA negativados e s'"
+      ]
+    },
+    {
+      "query": "assumo financiamento",
+      "location": "Florianopolis",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 1,
+      "repasse_hint": 8,
+      "price_in_title": 8,
+      "samples": [
+        "'R$19.900' / 'Assumir financiamento'",
+        "'Gratuito' / '2012 Voyage g5 assumir financiamento'"
+      ]
+    },
+    {
+      "query": "passo financiamento",
+      "location": "Florianopolis",
+      "http": 200,
+      "n": 10,
+      "br_price": 10,
+      "us_price": 0,
+      "sc_hint": 6,
+      "repasse_hint": 8,
+      "price_in_title": 10,
+      "samples": [
+        "'R$2.000' / '2019 Ford ka🔥parcelamento facilitado no bolet'",
+        "'R$39.900' / '2020 Renault oroch já financiado'"
+      ]
+    },
+    {
+      "query": "financiado",
+      "location": "Joinville",
+      "http": 200,
+      "n": 10,
+      "br_price": 10,
+      "us_price": 0,
+      "sc_hint": 3,
+      "repasse_hint": 2,
+      "price_in_title": 10,
+      "samples": [
+        "'R$11.000' / '2011 Citroën C3'",
+        "'R$39.900' / '2020 Renault oroch já financiado'"
+      ]
+    },
+    {
+      "query": "financiamento",
+      "location": "Joinville",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 9,
+      "price_in_title": 8,
+      "samples": [
+        "'Gratuito' / '💥 FINANCIAMENTO FACILITADO + PEQUENA ENTRADA!'",
+        "'Acabou de ser anunciado' / 'R$29.900'"
+      ]
+    },
+    {
+      "query": "assumo financiamento",
+      "location": "Joinville",
+      "http": 200,
+      "n": 10,
+      "br_price": 8,
+      "us_price": 0,
+      "sc_hint": 0,
+      "repasse_hint": 3,
+      "price_in_title": 8,
+      "samples": [
+        "'Acabou de ser anunciado' / 'R$10.000'",
+        "'R$13.900' / '2014 ASSUMIR PARCELAS siena'"
+      ]
+    },
+    {
+      "query": "passo financiamento",
+      "location": "Joinville",
+      "http": 200,
+      "n": 10,
+      "br_price": 10,
+      "us_price": 0,
+      "sc_hint": 3,
+      "repasse_hint": 3,
+      "price_in_title": 10,
+      "samples": [
+        "'R$39.900' / '2020 Renault oroch já financiado'",
+        "'R$23.990' / 'Carro pra assumir financiamento'"
+      ]
+    }
+  ],
+  "best_locs": [
+    "Curitiba",
+    "Florianopolis",
+    "Joinville"
+  ]
+}

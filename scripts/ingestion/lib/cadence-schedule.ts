@@ -5,7 +5,8 @@ export type CadenceSource =
   | "bradesco"
   | "napista"
   | "webmotors"
-  | "storefronts";
+  | "storefronts"
+  | "facebook";
 
 // Weekday sets per source (0 = Sunday … 6 = Saturday). Santander, BIDchain and
 // Leilões PB are deliberately absent — paused for near-zero yield under the
@@ -19,6 +20,8 @@ const SCHEDULE: Record<CadenceSource, number[]> = {
   napista: [0, 1, 2, 3, 4, 5, 6], // daily — plain-fetch, low cost, high value
   webmotors: [1, 3, 5], // Mon/Wed/Fri — Playwright+stealth, moderate load
   storefronts: [2, 5], // Tue/Fri — config-driven storefront scrape
+  // Facebook Marketplace RapidAPI — goal-biased; daily with write ceiling in harvester
+  facebook: [0, 1, 2, 3, 4, 5, 6],
 };
 
 export function sourcesDueOn(date: Date): CadenceSource[] {

@@ -71,7 +71,10 @@ Status: **Planned (2026-07-20)** — awaiting Phase 0 start
 ## Phase 6: Spikes (FUTURE WORK — blocked on human prerequisites)
 
 - [ ] **Task 6.1** WhatsApp/Telegram listener spike → `docs/spikes/messaging-listener-spike.md` (needs dedicated phone number — human)
-- [ ] **Task 6.2** Facebook Marketplace RapidAPI spike → `docs/spikes/facebook-marketplace-spike.md` (needs RapidAPI key — human)
+- [x] **Task 6.2** Facebook Marketplace RapidAPI spike → `docs/spikes/facebook-marketplace-spike.md` (2026-07-21: conditional go; paid plan unlocked full grid)
+  - [x] South-first location/query grid → `docs/spikes/fb-marketplace-query-grid.json`
+  - [ ] Product decision: keep paid RapidAPI vs rely on OLX/Webmotors for pre-repossession
+  - [ ] If go: implement remap + vehicle/repasse stage-2 filter before harvester code
 
 ## Future Work (see tasks/plan.md → Future Work)
 
@@ -83,7 +86,7 @@ Status: **Planned (2026-07-20)** — awaiting Phase 0 start
 ## Human-provided prerequisites
 
 - [ ] Dedicated phone number for WhatsApp groups (Task 6.1)
-- [ ] RapidAPI account/key (Task 6.2)
+- [x] RapidAPI account/key (Task 6.2) — key works; need paid quota or monthly reset to finish grid
 
 ## Out of scope (unchanged from prior plan)
 

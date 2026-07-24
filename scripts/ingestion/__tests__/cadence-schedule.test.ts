@@ -48,6 +48,12 @@ describe("sourcesDueOn", () => {
     expect(sourcesDueOn(new Date(2026, 6, 18))).not.toContain("storefronts"); // Sat
   });
 
+  it("runs facebook every day", () => {
+    for (let day = 13; day <= 19; day++) {
+      expect(sourcesDueOn(new Date(2026, 6, day))).toContain("facebook");
+    }
+  });
+
   it("never schedules paused sources", () => {
     for (let day = 13; day <= 19; day++) {
       const due = sourcesDueOn(new Date(2026, 6, day)) as string[];

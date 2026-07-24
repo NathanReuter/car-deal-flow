@@ -188,7 +188,7 @@ Phases 0–5 shipped (PR #7). The following are deferred:
 
 ### FW-1 — Phase 6 spikes (blocked on human prerequisites)
 - **Task 6.1 WhatsApp/Telegram listener** — needs a **dedicated phone number** before it can start. Deliverable: `docs/spikes/messaging-listener-spike.md`.
-- **Task 6.2 Facebook Marketplace RapidAPI** — needs a **RapidAPI key/account**. Deliverable: `docs/spikes/facebook-marketplace-spike.md`.
+- **Task 6.2 Facebook Marketplace RapidAPI** — spike complete (`docs/spikes/facebook-marketplace-spike.md` + `fb-marketplace-query-grid.json`): **conditional go**. Locations: `Florianopolis|Curitiba|Joinville` only; intent queries beat wide-net; vehicle gate mandatory (apartments/houses pollute `financiado`). Next: product cost OK → remap/filter fixtures → harvester.
 
 ### FW-2 — Cars-view UI scaling (design done, build deferred)
 Full design plan: **`docs/ui-cars-view-scaling-plan.md`**. The current "All Vehicles" view loads every car client-side and won't survive 50k+ rows. Plan covers server-side filter/paginate (URL-param driven), new filters (sourceChannel, confidence, state, FIPE-delta), sortable headers, skeleton/empty states, mobile card layout, and optional score/verdict persistence for SQL sort. Open decisions flagged in that doc.

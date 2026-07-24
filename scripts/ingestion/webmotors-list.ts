@@ -98,16 +98,17 @@ export async function warmWebmotorsContext(
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ locale: "pt-BR", proxy: wmProxyForContext() });
   // Cost control on metered residential proxies: the homepage warm-up is the
-  // only byte-heavy request (the JSON API pages are tiny). Aborting images,
-  // media, and fonts cuts warm-up traffic ~50-70% without touching the HTML,
-  // JS, CSS, or XHR the anti-bot sensor needs. Set WM_LOAD_IMAGES=1 to load
-  // everything if a lean fingerprint ever becomes a detection tell.
+  // only byte-heavy request (the JSON API pages are tiny). Aborting images and
+  // media cuts most warm-up traffic without touching the HTML, JS, CSS, fonts,
+  // or XHR the anti-bot sensor needs. Fonts stay loaded — negligible bytes, and
+  // a more browser-like fingerprint. NOTE: image-blocking is unverified against
+  // the live anti-bot (a homepage beacon can masquerade as an image), so A/B it
+  // on the first proxied run — WM_LOAD_IMAGES=1 (all loading) vs unset — and
+  // keep whichever clears more pages. WM_LOAD_IMAGES=1 disables blocking.
   if (process.env.WM_LOAD_IMAGES !== "1" && typeof context.route === "function") {
     await context.route("**/*", (route) => {
       const type = route.request().resourceType();
-      return type === "image" || type === "media" || type === "font"
-        ? route.abort()
-        : route.continue();
+      return type === "image" || type === "media" ? route.abort() : route.continue();
     });
   }
   const page = await context.newPage();

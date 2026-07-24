@@ -4,6 +4,7 @@ import {
   formatDamageRejection,
 } from "@/lib/filters/damageSignals";
 import { findDiscontinuedRisk } from "@/lib/filters/discontinuedRisk";
+import { computeLandedCost } from "@/lib/cost/landedCost";
 
 // Each criterion contributes equal weight to the fit score; a hard-excluded
 // brand/model always drives the score to 0 regardless of other matches.
@@ -78,10 +79,20 @@ export function computeGoalFit(car: Car, goal: BuyingGoal): GoalMatch {
     };
   }
 
+  const landed = computeLandedCost({
+    askingPriceBRL: car.askingPriceBRL,
+    dealPhase: car.dealPhase,
+    city: car.city,
+    state: car.state,
+  }).landedCostBRL;
+
   const criteria: { label: string; ok: boolean }[] = [
     {
       label: `Budget ${formatRange(goal.budgetMinBRL, goal.budgetMaxBRL)}`,
-      ok: car.askingPriceBRL >= goal.budgetMinBRL && car.askingPriceBRL <= goal.budgetMaxBRL * 1.05,
+      ok:
+        landed != null &&
+        landed >= goal.budgetMinBRL &&
+        landed <= goal.budgetMaxBRL * 1.05,
     },
     { label: `Model year ${goal.minYear}+`, ok: car.year >= goal.minYear },
     {

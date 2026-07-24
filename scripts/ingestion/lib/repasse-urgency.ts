@@ -32,6 +32,9 @@ export function computeRepasseUrgency(input: RepasseUrgencyInput): RepasseUrgenc
 
   if (input.restrictionFound || STRONG_MARKERS.test(text)) return "high";
 
+  // Intentionally compares the raw ask (not landed cost): this is a distress
+  // signal, and FIPE is not yet synced at parse time (the only caller passes
+  // adText only). Landed cost governs the cost/ranking surfaces, not this flag.
   const deepDiscount =
     input.askingPriceBRL != null &&
     input.fipeValueBRL != null &&

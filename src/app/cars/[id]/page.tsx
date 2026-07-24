@@ -9,6 +9,7 @@ import { StageSelect } from "@/components/cars/stage-select";
 import { getBundle } from "@/lib/aggregate";
 import { formatBRL, formatKm } from "@/lib/format";
 import { SELLER_TYPE_LABEL } from "@/lib/types";
+import { computeLandedCost } from "@/lib/cost/landedCost";
 
 export default async function CarDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,6 +17,12 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
   if (!bundle) notFound();
 
   const { car } = bundle;
+  const landedCostBRL = computeLandedCost({
+    askingPriceBRL: car.askingPriceBRL,
+    dealPhase: car.dealPhase,
+    city: car.city,
+    state: car.state,
+  }).landedCostBRL;
   const sources =
     car.sources ??
     [{ url: car.sourceUrl, platform: car.sourcePlatform, isPrimary: true, auctionDate: null }];
@@ -53,6 +60,11 @@ export default async function CarDetailPage({ params }: { params: Promise<{ id: 
               ? "Custo efetivo (entrada + saldo)"
               : "Asking price (lance mínimo)"}
           </div>
+          {landedCostBRL !== null && landedCostBRL !== car.askingPriceBRL && (
+            <div className="mt-1 text-xs font-medium tabular-nums text-text-secondary">
+              Custo all-in ≈ {formatBRL(landedCostBRL)}
+            </div>
+          )}
         </div>
       </div>
 

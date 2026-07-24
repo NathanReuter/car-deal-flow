@@ -12,6 +12,7 @@ import { PhaseBadge } from "@/components/domain/phase-badge";
 import { UrgencyBadge } from "@/components/domain/urgency-badge";
 import { ConfidenceBadge } from "@/components/domain/confidence-badge";
 import { formatBRL, formatKm } from "@/lib/format";
+import { computeLandedCost } from "@/lib/cost/landedCost";
 import {
   DEAL_PHASE_LABEL,
   PIPELINE_STAGES,
@@ -47,13 +48,29 @@ function withFacetCount(label: string, count: number | undefined): string {
   return count !== undefined ? `${label} (${count})` : label;
 }
 
+/** Minimal origin fields needed to derive landed cost for the FIPE delta. */
+type FipeDeltaCar = {
+  askingPriceBRL: number;
+  city: string;
+  state: string;
+  dealPhase?: string;
+};
+
 /**
- * Compute FIPE discount percentage.
- * Returns a number [0-100] when fipeValueBRL is present and > 0, else null.
+ * Compute FIPE discount percentage against landed cost (ask + frete + auction
+ * fees), so distant/auction cars show a smaller discount than lance alone.
+ * Returns a number when fipeValueBRL and landed cost are present, else null.
  */
-function fipeDeltaPct(askingPriceBRL: number, fipeValueBRL: number | null | undefined): number | null {
+function fipeDeltaPct(car: FipeDeltaCar, fipeValueBRL: number | null | undefined): number | null {
   if (!fipeValueBRL || fipeValueBRL <= 0) return null;
-  return Math.round((1 - askingPriceBRL / fipeValueBRL) * 100);
+  const landed = computeLandedCost({
+    askingPriceBRL: car.askingPriceBRL,
+    dealPhase: car.dealPhase,
+    city: car.city,
+    state: car.state,
+  }).landedCostBRL;
+  if (landed == null) return null;
+  return Math.round((1 - landed / fipeValueBRL) * 100);
 }
 
 // ---------------------------------------------------------------------------
@@ -175,8 +192,8 @@ function SortableTH({ children, sortKey, currentSort, onSort, className }: Sorta
 // ---------------------------------------------------------------------------
 // FIPE-Δ display cell
 
-function FipeDeltaCell({ askingPriceBRL, fipeValueBRL }: { askingPriceBRL: number; fipeValueBRL: number | null | undefined }) {
-  const pct = fipeDeltaPct(askingPriceBRL, fipeValueBRL);
+function FipeDeltaCell({ car, fipeValueBRL }: { car: FipeDeltaCar; fipeValueBRL: number | null | undefined }) {
+  const pct = fipeDeltaPct(car, fipeValueBRL);
   if (pct === null) return <span className="text-text-muted">—</span>;
 
   let colorClass = "text-text-muted";
@@ -190,7 +207,7 @@ function FipeDeltaCell({ askingPriceBRL, fipeValueBRL }: { askingPriceBRL: numbe
 // Mobile card (< sm breakpoint)
 
 function CarCard({ b, pathname }: { b: CarBundle; pathname: string }) {
-  const pct = fipeDeltaPct(b.car.askingPriceBRL, b.car.fipeValueBRL);
+  const pct = fipeDeltaPct(b.car, b.car.fipeValueBRL);
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-card p-3">
       {/* Header row: brand/model + score */}
@@ -213,7 +230,7 @@ function CarCard({ b, pathname }: { b: CarBundle; pathname: string }) {
       <div className="flex items-center gap-3 text-sm">
         <span className="tabular-nums font-medium text-text-primary">{formatBRL(b.car.askingPriceBRL)}</span>
         {pct !== null && (
-          <FipeDeltaCell askingPriceBRL={b.car.askingPriceBRL} fipeValueBRL={b.car.fipeValueBRL} />
+          <FipeDeltaCell car={b.car} fipeValueBRL={b.car.fipeValueBRL} />
         )}
       </div>
 
@@ -655,7 +672,7 @@ export function CarsTableView({ rows, total, page, pageSize, facets, params }: C
                 <TD className="tabular-nums text-text-secondary">{formatKm(b.car.mileageKm)}</TD>
                 <TD className="tabular-nums font-medium">{formatBRL(b.car.askingPriceBRL)}</TD>
                 <TD>
-                  <FipeDeltaCell askingPriceBRL={b.car.askingPriceBRL} fipeValueBRL={b.car.fipeValueBRL} />
+                  <FipeDeltaCell car={b.car} fipeValueBRL={b.car.fipeValueBRL} />
                 </TD>
                 <TD className="text-text-secondary">
                   {b.car.city}/{b.car.state}

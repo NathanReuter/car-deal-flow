@@ -14,6 +14,8 @@ const taos: DealCar & { brand: string } = {
   installmentsRemaining: null,
   outstandingDebtBRL: null,
   fipeValueBRL: 129133,
+  city: "Florianópolis",
+  state: "SC",
 };
 
 const dud = { ...taos, model: "ONIX PLUS", sourceUrl: "https://x" };
@@ -25,9 +27,9 @@ describe("buildAlertReport", () => {
     expect(report.deals).toHaveLength(1);
     expect(report.deals[0]).toMatchObject({
       label: "Volkswagen TAOS CL TSI 2023",
-      totalCostBRL: 33000,
+      totalCostBRL: 37550, // 33000 lance + 1650 comissão + 1200 DETRAN + 1700 buffer (SC → frete 0)
       fipeValueBRL: 129133,
-      pctOfFipe: 25.6,
+      pctOfFipe: 29.1,
       sourceUrl: "https://vip.example/lot/9",
     });
   });

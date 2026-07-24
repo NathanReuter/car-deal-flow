@@ -24,6 +24,7 @@ import {
   WebmotorsBlockError,
   WM_API_BASE,
   WM_PACING,
+  wmLaunchOptions,
   WM_QUERIES,
   WM_ROTATE_EVERY_PAGES,
 } from "./webmotors-list";
@@ -90,7 +91,7 @@ export async function harvestWebmotors(options: {
   let stoppedEarly = false; // limit/ceiling reached — plausibility not meaningful
 
   const ownBrowser = !options.page;
-  const browser = ownBrowser ? await chromium.launch({ headless: true }) : null;
+  const browser = ownBrowser ? await chromium.launch(wmLaunchOptions()) : null;
   const rotateEvery = options.rotateEveryPages ?? WM_ROTATE_EVERY_PAGES;
   let context: BrowserContext | null = null;
   let pagesSinceWarm = 0;

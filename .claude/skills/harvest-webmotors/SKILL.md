@@ -28,15 +28,31 @@ Platform: `Webmotors`, `sellerType: repasse`, `dealPhase: pre_repossession`.
   (3) `hasFinancingSignal` text gate rejects plain-sale ads without a
   financing-transfer phrase. Dealer stock cannot pass all three layers.
 - Anti-bot evasion (measured 2026-07-23): a fresh warm session clears ~6 API
-  pages before Cloudflare/PerimeterX returns 403. Two levers mitigate this:
+  pages before Cloudflare/PerimeterX returns 403. Runs **headful by default**
+  (`wmLaunchOptions`): the findings flagged headless-stealth as itself a likely
+  bot tell, and the harvest runs locally on a Mac with a real display. Set
+  `WM_HEADLESS=1` to force headless (e.g. a Linux server, where headful needs
+  xvfb). The IP-reputation ceiling is the dominant limiter, not fingerprint:
+  cookie/context rotation does **not** reset the IP, so once the source IP is
+  flagged (degrades within ~15min of heavy runs), rotate the IP. Set
+  `WM_PROXY_SERVER` (+ `WM_PROXY_USERNAME` / `WM_PROXY_PASSWORD`) to route each
+  context through a residential proxy; a literal `{session}` in the username is
+  replaced with a fresh token per warm-up, so every context rotation lands on a
+  new IP (`wmProxyForContext`); export the vars in your shell — the CLIs do
+  not read `.env`. On the proxy path, image/media requests are dropped to save
+  metered bandwidth (`WM_LOAD_IMAGES=1` disables that; the free path always
+  loads everything). Unset ⇒ direct connection (free path: manual phone-tether +
+  airplane-mode roll, or let the IP cool). Two in-code levers
+  mitigate velocity:
   (1) **jittered pacing** — `throttleFetch({minMs,maxMs})` with `WM_PACING`
   (1.5–4s) instead of a constant interval; (2) **context rotation** — the list
   and harvest CLIs rotate the browser context (drop the session cookie +
   re-warm the homepage via `warmWebmotorsContext`) every `WM_ROTATE_EVERY_PAGES`
-  (5) fetches, staying under the block ceiling. Rotation resets the *cookie*,
-  not the *IP*: if the source IP itself gets flagged (degrades within ~15min of
-  heavy runs), rotate the IP (e.g. phone-tether + airplane-mode toggle) or let
-  it cool. **Camoufox was evaluated and rejected** (unresolved `chrome://juggler`
+  (5) fetches, staying under the block ceiling. Context rotation resets the *cookie* on
+  every re-warm; the *IP* rotates too **only** when `WM_PROXY_*` is set with a
+  `{session}` username (each re-warm mints a new proxy session → new IP).
+  Without a proxy, re-warming reuses the same IP, so a flagged IP needs a manual
+  roll (phone-tether + airplane-mode) or a cooldown. **Camoufox was evaluated and rejected** (unresolved `chrome://juggler`
   automation leak — worse than the stealth baseline). curl-impersonate
   (`curl_cffi` chrome136) can spend a browser-minted cookie over matched
   JA4+H2, but only ~1–3 pages/token, so the in-browser rotation path above is

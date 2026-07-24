@@ -167,6 +167,7 @@ describe("applyGoalFilter", () => {
     const lead = await writeLead(ctx.prisma, {
       brand: "Hyundai",
       model: "Creta",
+      trim: "Limited", // CarPlay trim — clears the Creta tech-trim gate as a strong fit
       year: 2022,
       askingPriceBRL: 100000,
       sourceUrl: "https://example.com/creta",

@@ -44,9 +44,12 @@ Prints a JSON summary: `{ evaluated, keptNewLead, parked, rejected }`.
 - Hard-reject gates (score forced to 0, in priority order): excluded
   brand/model (goal-specific, user-editable) → discontinued/orphaned-brand
   risk (`src/lib/filters/discontinuedRisk.ts`, code-maintained, applies to
-  every goal) → damage/sinistro signals in notes → body type outside
-  `preferredBodyTypes`. Everything else is scored as weighted soft criteria
-  (budget, year, mileage, brand, family space).
+  every goal) → damage/sinistro signals in notes → **Creta Action** (no
+  CarPlay; `cretaTechTrim.ts`) → body type outside `preferredBodyTypes`.
+  **Creta with unknown/blank trim** scores 40 (parks under default
+  `--min-goal-fit 50`) until Comfort+/Limited+/Platinum+ is confirmed.
+  Everything else is scored as weighted soft criteria (budget, year,
+  mileage, brand, family space).
 - The discontinued-risk list is a market-research snapshot (2026-07-21:
   brands with paralyzed/exited Brazil operations — Neta, Seres, Jaguar,
   Subaru — and models discontinued by Proconve L8 with no confirmed

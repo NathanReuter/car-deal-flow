@@ -121,6 +121,34 @@ describe("computeGoalFit damage gate", () => {
   });
 });
 
+describe("computeGoalFit Creta CarPlay trim gate", () => {
+  it("hard-rejects Creta Action", () => {
+    const match = computeGoalFit(
+      baseCar({ brand: "Hyundai", model: "CRETA", trim: "Action", bodyType: "suv" as BodyType }),
+      { ...baseGoal(), preferredBrands: [] },
+    );
+    expect(match.score).toBe(0);
+    expect(match.failedCriteria.join(" ")).toMatch(/Action/i);
+  });
+
+  it("parks unknown Creta trim at score 40", () => {
+    const match = computeGoalFit(
+      baseCar({ brand: "Hyundai", model: "CRETA", trim: "", bodyType: "suv" as BodyType }),
+      { ...baseGoal(), preferredBrands: [] },
+    );
+    expect(match.score).toBe(40);
+    expect(match.failedCriteria.join(" ")).toMatch(/trim unknown/i);
+  });
+
+  it("allows Creta Limited", () => {
+    const match = computeGoalFit(
+      baseCar({ brand: "Hyundai", model: "Creta", trim: "Limited", bodyType: "suv" as BodyType }),
+      { ...baseGoal(), preferredBrands: [] },
+    );
+    expect(match.score).toBeGreaterThan(40);
+  });
+});
+
 describe("computeGoalFit budget uses landed cost", () => {
   it("fails budget when landed (ask+frete+fees) exceeds soft max but ask alone would pass", () => {
     // soft max = 100000 * 1.05 = 105000

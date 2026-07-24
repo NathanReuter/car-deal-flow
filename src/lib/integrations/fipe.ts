@@ -1,6 +1,6 @@
 import type { FuelType, Transmission } from "@/lib/types";
 import { FipeError } from "@/lib/integrations/fipe-error";
-import { selectFipeModel } from "@/lib/integrations/fipe-model-match";
+import { rankFipeModels, selectFipeModel } from "@/lib/integrations/fipe-model-match";
 
 export { FipeError };
 
@@ -25,6 +25,10 @@ const FUEL_TOKEN: Record<FuelType, RegExp> = {
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  // installCachedFetch caches this resolved Response (including 429s) by URL,
+  // so retrying here would just replay the same cached failure — no backoff
+  // helps until the caller stops hitting the API. See syncMissingFipe's
+  // circuit breaker.
   if (!res.ok) throw new FipeError(`FIPE request failed (${res.status}) for ${url}`);
   return (await res.json()) as T;
 }
@@ -75,28 +79,58 @@ export async function findFipeValue(
 
   const modelsResp = await getJson<{ modelos?: Ref[] } | Ref[]>(`${BASE}/brands/${brand.code}/models`);
   const models = Array.isArray(modelsResp) ? modelsResp : (modelsResp.modelos ?? []);
-  const model = selectFipeModel(models, input.model, input.trim ?? "", {
+
+  // Auction listings rarely carry a distinctive trim, so several catalog rows
+  // often tie on score (e.g. every "Onix 1.0" trim since 2014). Picking the
+  // top tie arbitrarily can land on a discontinued row missing this car's
+  // year. Walk the candidates tied for the top score and keep the first
+  // whose years list actually covers the target year, instead of committing
+  // up front. Candidates below the top score are a worse family/trim match,
+  // not a tie, so they're not worth the extra requests.
+  const ranked = rankFipeModels(models, input.model, input.trim ?? "", {
     transmission: input.transmission,
   });
+  if (ranked.length === 0) {
+    // Preserve the existing fail-closed error (missing distinctive trim, etc).
+    selectFipeModel(models, input.model, input.trim ?? "", { transmission: input.transmission });
+  }
+  const topScore = ranked[0]?.score;
+  const tied = ranked.filter((r) => r.score === topScore);
 
-  const years = await getJson<Ref[]>(`${BASE}/brands/${brand.code}/models/${model.code}/years`);
-  const year = pickYear(years, input.modelYear ?? input.year, input.fuel);
+  let lastErr: FipeError | undefined;
+  for (const { model } of tied) {
+    let years: Ref[];
+    let year: Ref;
+    try {
+      years = await getJson<Ref[]>(`${BASE}/brands/${brand.code}/models/${model.code}/years`);
+      year = pickYear(years, input.modelYear ?? input.year, input.fuel);
+    } catch (e) {
+      if (!(e instanceof FipeError)) throw e;
+      lastErr = e;
+      continue;
+    }
 
-  const detail = await getJson<{
-    price?: string;
-    Valor?: string;
-    model?: string;
-    Modelo?: string;
-    referenceMonth?: string;
-    MesReferencia?: string;
-  }>(`${BASE}/brands/${brand.code}/models/${model.code}/years/${year.code}`);
+    const detail = await getJson<{
+      price?: string;
+      Valor?: string;
+      model?: string;
+      Modelo?: string;
+      referenceMonth?: string;
+      MesReferencia?: string;
+    }>(`${BASE}/brands/${brand.code}/models/${model.code}/years/${year.code}`);
 
-  const price = detail.price ?? detail.Valor;
-  const matchedModel = detail.model ?? detail.Modelo;
-  const referenceMonth = detail.referenceMonth ?? detail.MesReferencia;
-  if (!price || !matchedModel || !referenceMonth) {
-    throw new FipeError("FIPE detail response missing price/model/referenceMonth");
+    const price = detail.price ?? detail.Valor;
+    const matchedModel = detail.model ?? detail.Modelo;
+    const referenceMonth = detail.referenceMonth ?? detail.MesReferencia;
+    if (!price || !matchedModel || !referenceMonth) {
+      throw new FipeError("FIPE detail response missing price/model/referenceMonth");
+    }
+
+    return { valueBRL: parseBRL(price), matchedModel, referenceMonth };
   }
 
-  return { valueBRL: parseBRL(price), matchedModel, referenceMonth };
+  throw (
+    lastErr ??
+    new FipeError(`No FIPE year entry for ${input.modelYear ?? input.year} among tied matching models`)
+  );
 }

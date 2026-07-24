@@ -1,3 +1,5 @@
+import { computeLandedCost } from "@/lib/cost/landedCost";
+
 export interface DealCar {
   model: string;
   trim: string;
@@ -9,6 +11,8 @@ export interface DealCar {
   installmentsRemaining: number | null;
   outstandingDebtBRL: number | null;
   fipeValueBRL: number | null;
+  city: string;
+  state: string;
 }
 
 export const TARGET_MODEL_RE =
@@ -18,12 +22,12 @@ const SPECIAL_DEAL_MAX_PCT_OF_FIPE = 0.6;
 const MIN_YEAR = 2021;
 
 export function totalCostBRL(car: DealCar): number | null {
-  if (car.dealPhase !== "pre_repossession") return car.askingPriceBRL;
-  if (car.installmentBRL != null && car.installmentsRemaining != null) {
-    return car.askingPriceBRL + car.installmentBRL * car.installmentsRemaining;
-  }
-  if (car.outstandingDebtBRL != null) return car.askingPriceBRL + car.outstandingDebtBRL;
-  return null; // repasse with unknown debt cannot be priced honestly
+  return computeLandedCost({
+    askingPriceBRL: car.askingPriceBRL,
+    dealPhase: car.dealPhase,
+    city: car.city,
+    state: car.state,
+  }).landedCostBRL;
 }
 
 export function isSpecialDeal(car: DealCar): boolean {

@@ -296,6 +296,7 @@ export type ResaleTimeBucket = "fast" | "moderate" | "slow";
 export interface MarketAssessment {
   carId: string;
   askingPriceBRL: number;
+  landedCostBRL: number | null; // ask + frete + auction fees; null when ask unpriced
   fipeValueBRL: number | null;
   fairMarketMinBRL: number | null;
   fairMarketMaxBRL: number | null;

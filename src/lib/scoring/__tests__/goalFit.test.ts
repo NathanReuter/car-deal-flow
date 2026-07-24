@@ -120,3 +120,33 @@ describe("computeGoalFit damage gate", () => {
     expect(match.score).toBeGreaterThan(0);
   });
 });
+
+describe("computeGoalFit budget uses landed cost", () => {
+  it("fails budget when landed (ask+frete+fees) exceeds soft max but ask alone would pass", () => {
+    // soft max = 100000 * 1.05 = 105000
+    // ask 100000 in GO auction → landed 100000+2600+5000+1200+1700 = 110500
+    const match = computeGoalFit(
+      baseCar({
+        askingPriceBRL: 100_000,
+        city: "Goiânia",
+        state: "GO",
+        dealPhase: "auction",
+      }),
+      baseGoal(),
+    );
+    expect(match.failedCriteria.some((c) => c.startsWith("Budget"))).toBe(true);
+  });
+
+  it("passes budget for same ask in SC market (frete 0, no auction fees)", () => {
+    const match = computeGoalFit(
+      baseCar({
+        askingPriceBRL: 100_000,
+        city: "Florianópolis",
+        state: "SC",
+        dealPhase: "market",
+      }),
+      baseGoal(),
+    );
+    expect(match.matchedCriteria.some((c) => c.startsWith("Budget"))).toBe(true);
+  });
+});

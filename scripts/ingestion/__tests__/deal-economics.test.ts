@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isSpecialDeal, totalCostBRL, type DealCar } from "../lib/deal-economics";
+import {
+  classifyTargetModel,
+  isSpecialDeal,
+  totalCostBRL,
+  type DealCar,
+} from "../lib/deal-economics";
 
 const base: DealCar = {
   model: "TAOS CL TSI",
@@ -80,5 +85,55 @@ describe("isSpecialDeal", () => {
     // Under the landed model, pre_repossession is no longer 'unpriced' — ask is
     // treated as effective cost, so a 33000 ask (+frete) stays ≤60% of FIPE.
     expect(isSpecialDeal({ ...base, dealPhase: "pre_repossession" })).toBe(true);
+  });
+
+  it("accepts Song / Yuan Plus / Haval at ≤60% FIPE", () => {
+    const song: DealCar = {
+      ...base,
+      model: "Song Pro",
+      askingPriceBRL: 90000,
+      fipeValueBRL: 170000,
+    };
+    expect(isSpecialDeal(song)).toBe(true);
+    expect(isSpecialDeal({ ...song, model: "Yuan Plus" })).toBe(true);
+    expect(isSpecialDeal({ ...song, model: "HAVAL H6" })).toBe(true);
+  });
+
+  it("rejects Tiggo 7 even when deeply discounted", () => {
+    expect(
+      isSpecialDeal({
+        ...base,
+        model: "Tiggo 7 PRO",
+        askingPriceBRL: 50000,
+        fipeValueBRL: 150000,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("classifyTargetModel", () => {
+  it("classifies core peers including Tiggo 5x", () => {
+    expect(classifyTargetModel("Hyundai CRETA Limited")).toEqual({ key: "creta", tier: "core" });
+    expect(classifyTargetModel("VW T-Cross Highline")).toEqual({ key: "t-cross", tier: "core" });
+    expect(classifyTargetModel("Caoa Chery Tiggo 5x PRO")).toEqual({ key: "tiggo-5x", tier: "core" });
+    expect(classifyTargetModel("Toyota Corolla Cross XRE")).toEqual({
+      key: "corolla-cross",
+      tier: "core",
+    });
+  });
+
+  it("classifies lottery NEV models", () => {
+    expect(classifyTargetModel("BYD Song Pro GS")).toEqual({ key: "song", tier: "lottery" });
+    expect(classifyTargetModel("BYD Yuan Plus")).toEqual({ key: "yuan-plus", tier: "lottery" });
+    expect(classifyTargetModel("GWM HAVAL H6 HEV")).toEqual({ key: "haval", tier: "lottery" });
+  });
+
+  it("rejects Tiggo 7/8, Tracker, bare Chery/GWM, and watch-list brands", () => {
+    expect(classifyTargetModel("Chery Tiggo 7 PRO")).toBeNull();
+    expect(classifyTargetModel("Chery Tiggo 8")).toBeNull();
+    expect(classifyTargetModel("Chevrolet Tracker Premier")).toBeNull();
+    expect(classifyTargetModel("Chery Arrizo")).toBeNull();
+    expect(classifyTargetModel("Omoda 5 HEV")).toBeNull();
+    expect(classifyTargetModel("Leapmotor C10")).toBeNull();
   });
 });
